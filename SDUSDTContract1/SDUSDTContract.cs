@@ -25,6 +25,10 @@ namespace SDUSDTContract1
         //超级管理员账户
         private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AKpBvxcYeueHHLFXUAshFHwreYTGXTMH2y");
 
+        //调用PNeo合约
+        [Appcall("cff5a8487aea09361f0f868e72a1055274a5754d")]
+        public static extern int PNeoContract(string operation, params object[] args);
+
         //nep5 func
         public static BigInteger TotalSupply()
         {
@@ -188,13 +192,65 @@ namespace SDUSDTContract1
                     byte[] txid = (byte[])args[0];
                     return GetTXInfo(txid);
                 }
-                if (operation == "mintTokens")
+                //创建CDP记录
+                if (operation == "openCdp")
                 {
-                    if (args.Length != 0) return 0;
-                    return MintTokens();
+                    if (args.Length != 1) return false;
+
+                    byte[] addr = (byte[])args[0];
+                    if (!Runtime.CheckWitness(addr)) return false;
+
+                    BigInteger cdp = Storage.Get(Storage.CurrentContext,addr.Concat(new byte[]{ 0,0})).AsBigInteger();
+                    if (cdp != 0) return false;
+
+                    Storage.Put(Storage.CurrentContext,addr.Concat(new byte[] { 0,0}),0);
+                    return true;
                 }
+                //锁仓PNeo
+                if (operation=="lock") {
+                    if (args.Length != 2) return false;
+
+                    byte[] addr = (byte[])args[0];
+                    BigInteger lockMount = (BigInteger)args[1];
+
+                    if (lockMount <= 0) return false;
+                    if (!Runtime.CheckWitness(addr)) return false;
+                    return LockMount(addr,lockMount);
+                }
+                if (operation == "draw") {
+                    if (args.Length != 2) return false;
+
+                    byte[] addr = (byte[])args[0];
+                    BigInteger drawMount = (BigInteger)args[1];
+
+                    if (drawMount <= 0) return false;
+                    if (!Runtime.CheckWitness(addr)) return false;
+                    return Draw(addr, drawMount);
+
+                }
+
             }
             return false;
+        }
+
+        private static Boolean Draw(byte[] addr, BigInteger drawMount)
+        {
+            //兑换比率150%
+            Transfer(null,addr,drawMount);
+            return true;
+
+        }
+
+        private static Boolean LockMount(byte[] addr, BigInteger lockMount)
+        {
+            byte[] key = addr.Concat(new byte[] { 0, 0 });
+            BigInteger current = Storage.Get(Storage.CurrentContext, key).AsBigInteger();
+            //销毁PNeo，增发SDUSDT
+            //... to do 
+
+
+            Storage.Put(Storage.CurrentContext,key,current+lockMount);
+            return true;
         }
 
         public static TransferInfo GetTXInfo(byte[] txid)
