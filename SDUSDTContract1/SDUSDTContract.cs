@@ -200,11 +200,7 @@ namespace SDUSDTContract1
                     byte[] addr = (byte[])args[0];
                     if (!Runtime.CheckWitness(addr)) return false;
 
-                    BigInteger cdp = Storage.Get(Storage.CurrentContext,addr.Concat(new byte[]{ 0,0})).AsBigInteger();
-                    if (cdp != 0) return false;
-
-                    Storage.Put(Storage.CurrentContext,addr.Concat(new byte[] { 0,0}),0);
-                    return true;
+                    return OpenCDP(addr);
                 }
                 //锁仓PNeo
                 if (operation=="lock") {
@@ -217,6 +213,7 @@ namespace SDUSDTContract1
                     if (!Runtime.CheckWitness(addr)) return false;
                     return LockMount(addr,lockMount);
                 }
+                //提取SDUSDT
                 if (operation == "draw") {
                     if (args.Length != 2) return false;
 
@@ -225,6 +222,7 @@ namespace SDUSDTContract1
 
                     if (drawMount <= 0) return false;
                     if (!Runtime.CheckWitness(addr)) return false;
+
                     return Draw(addr, drawMount);
 
                 }
@@ -233,25 +231,131 @@ namespace SDUSDTContract1
             return false;
         }
 
+        private static Boolean OpenCDP(byte[] addr)
+        {
+            //已经有在仓的CDP就不重新建
+            var key = addr.Concat(ConvertN(0));
+            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
+            if (cdp.Length != 0)
+                return false;
+
+            //交易ID 
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+
+            //交易信息
+            CDPTransferInfo cdpInfo = new CDPTransferInfo();
+            cdpInfo.from = addr;
+            cdpInfo.locked = 0;
+            cdpInfo.hasDrawed = 0;
+            cdpInfo.txid = txid;
+
+            byte[] txinfo = Helper.Serialize(cdpInfo);
+            Storage.Put(Storage.CurrentContext, key, txinfo);
+            return true;
+        }
+
+        private static Boolean LockMount(byte[] addr, BigInteger lockMount)
+        {
+            //CDP是否存在
+            var key = addr.Concat(ConvertN(0));
+            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
+            if (cdp.Length != 0)
+                return false;
+
+            //销毁PNeo
+            //... to do 
+
+            //设置锁仓的数量
+            CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
+
+            BigInteger currLock = cdpInfo.locked;
+            cdpInfo.locked = currLock + lockMount;
+            Storage.Put(Storage.CurrentContext, key,Helper.Serialize(cdpInfo));
+
+            //记录交易详细数据
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            CDPTransferDetail detail = new CDPTransferDetail();
+            detail.from = addr;
+            detail.cdpTxid = cdpInfo.txid;
+            detail.type = "1";
+            detail.locked = lockMount;
+            detail.hasLocked = currLock;
+            detail.drawed = 0;
+
+            Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
+            return true;
+        }
+
+
         private static Boolean Draw(byte[] addr, BigInteger drawMount)
         {
             //兑换比率150%
+            //CDP是否存在
+            var key = addr.Concat(ConvertN(0));
+            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
+            if (cdp.Length != 0)
+                return false;
+
+            CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
+            BigInteger locked = cdpInfo.locked;
+            BigInteger hasDrawed = cdpInfo.hasDrawed;
+
+            //当前NEO美元价格，需要从价格中心获取
+            BigInteger neoPrice = 100;
+            //当前兑换率，需要从配置中心获取
+            BigInteger rate = 150;
+
+            //计算总共能兑换的量
+            BigInteger allSd =locked * neoPrice*100/rate;
+            
+            //超过兑换上限，不能操作
+            if (allSd < hasDrawed + drawMount) return false;
+
+            //设置已经获取量
+            cdpInfo.hasDrawed = hasDrawed + drawMount;
+            Storage.Put(Storage.CurrentContext, key, Helper.Serialize(cdpInfo));
+
+            //记录交易详细数据
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            CDPTransferDetail detail = new CDPTransferDetail();
+            detail.from = addr;
+            detail.cdpTxid = cdpInfo.txid;
+            detail.type = "2";
+            detail.locked = 0;
+            detail.hasLocked = locked;
+            detail.drawed = drawMount;
+            Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
+
             Transfer(null,addr,drawMount);
             return true;
 
         }
 
-        private static Boolean LockMount(byte[] addr, BigInteger lockMount)
+        /// <summary>
+        ///   This method defines some params to set key.
+        /// </summary>
+        /// <param name="n">
+        ///     0:openCDP 1:lock 
+        /// </param>
+        /// <returns>
+        ///     Return byte[]
+        /// </returns>
+        private static byte[] ConvertN(BigInteger n)
         {
-            byte[] key = addr.Concat(new byte[] { 0, 0 });
-            BigInteger current = Storage.Get(Storage.CurrentContext, key).AsBigInteger();
-            //销毁PNeo，增发SDUSDT
-            //... to do 
-
-
-            Storage.Put(Storage.CurrentContext,key,current+lockMount);
-            return true;
+            if (n == 0)
+                return new byte[2] {0x00,0x00};
+            if (n == 1)
+                return new byte[2] { 0x00, 0x01 };
+            if (n == 2)
+                return new byte[2] { 0x00, 0x02 };
+            if (n == 3)
+                return new byte[2] { 0x00, 0x03 };
+            if (n == 4)
+                return new byte[2] { 0x00, 0x04 };
+            throw new Exception("not support.");
         }
+
+    
 
         public static TransferInfo GetTXInfo(byte[] txid)
         {
@@ -260,41 +364,40 @@ namespace SDUSDTContract1
                 return null;
 
             //老式实现方法
-            TransferInfo info = new TransferInfo();
-            int seek = 0;
-            var fromlen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            seek += 2;
-            info.from = v.AsString().Substring(seek, fromlen).AsByteArray();
-            seek += fromlen;
-            var tolen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            seek += 2;
-            info.to = v.AsString().Substring(seek, tolen).AsByteArray();
-            seek += tolen;
-            var valuelen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            seek += 2;
-            info.value = v.AsString().Substring(seek, valuelen).AsByteArray().AsBigInteger();
-            return info;
+            //TransferInfo info = new TransferInfo();
+            //int seek = 0;
+            //var fromlen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            //seek += 2;
+            //info.from = v.AsString().Substring(seek, fromlen).AsByteArray();
+            //seek += fromlen;
+            //var tolen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            //seek += 2;
+            //info.to = v.AsString().Substring(seek, tolen).AsByteArray();
+            //seek += tolen;
+            //var valuelen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            //seek += 2;
+            //info.value = v.AsString().Substring(seek, valuelen).AsByteArray().AsBigInteger();
+            //return info;
 
             //新式实现方法只要一行
-            // return Helper.Deserialize(v) as TransferInfo;
+            return (TransferInfo)Helper.Deserialize(v);
         }
 
         private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
         {
             //因为testnet 还在2.6，限制
-
             TransferInfo info = new TransferInfo();
             info.from = from;
             info.to = to;
             info.value = value;
 
             //用一个老式实现法
-            byte[] txinfo = byteLen(info.from.Length).Concat(info.from);
-            txinfo = txinfo.Concat(byteLen(info.to.Length)).Concat(info.to);
-            byte[] _value = value.AsByteArray();
-            txinfo = txinfo.Concat(byteLen(_value.Length)).Concat(_value);
+            //byte[] txinfo = byteLen(info.from.Length).Concat(info.from);
+            //txinfo = txinfo.Concat(byteLen(info.to.Length)).Concat(info.to);
+            //byte[] _value = value.AsByteArray();
+            //txinfo = txinfo.Concat(byteLen(_value.Length)).Concat(_value);
             //新式实现方法只要一行
-            //byte[] txinfo = Helper.Serialize(info);
+            byte[] txinfo = Helper.Serialize(info);
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             Storage.Put(Storage.CurrentContext, txid, txinfo);
@@ -303,7 +406,7 @@ namespace SDUSDTContract1
         public static bool MintTokens()
         {
             var tx = (Transaction)ExecutionEngine.ScriptContainer;
-
+            
             //获取投资人，谁要换gas
             byte[] who = null;
             TransactionOutput[] reference = tx.GetReferences();
@@ -354,6 +457,45 @@ namespace SDUSDTContract1
             if (v.Length < 2)
                 v = v.Concat(new byte[1] { 0x00 });
             return v;
+        }
+
+        public class CDPTransferInfo
+        {
+            //地址
+            public byte[] from;
+
+            //交易序号
+            public byte[] txid;
+
+            //被锁定的资产,如PNeo
+            public BigInteger locked;
+
+            //已经提取的资产，如SDUSDT  
+            public BigInteger hasDrawed;
+        }
+
+        public class CDPTransferDetail
+        {
+            //地址
+            public byte[] from;
+
+            //CDP交易序号
+            public byte[] cdpTxid;
+
+            //交易序号
+            public byte[] txid;
+
+            //需要被锁定的资产,如PNeo
+            public BigInteger locked;
+
+            //已经被锁定的资产,如PNeo
+            public BigInteger hasLocked;
+
+            //需要提取的资产，如SDUSDT  
+            public BigInteger drawed;
+
+            //操作类型
+            public string type;
         }
 
         /// <summary>
