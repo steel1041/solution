@@ -9,9 +9,6 @@
     <Reference Include="llvm">
       <HintPath>..\..\..\..\..\..\Neo\neo-thinsdk-cs-master\llvm\bin\Debug\netcoreapp2.0\llvm.dll</HintPath>
     </Reference>
-    <Reference Include="smartContractDemo">
-      <HintPath>..\..\..\..\..\..\Neo\neo-thinsdk-cs-master\smartContractDemo\bin\Debug\netcoreapp2.0\smartContractDemo.dll</HintPath>
-    </Reference>
     <Reference Include="thinSDK">
       <HintPath>..\..\..\..\..\..\Neo\neo-thinsdk-cs-master\smartContractDemo\bin\Debug\netcoreapp2.0\thinSDK.dll</HintPath>
     </Reference>
