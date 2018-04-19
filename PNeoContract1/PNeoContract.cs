@@ -21,9 +21,12 @@ namespace PNeoContract1
 
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
+         
+        [Appcall("0b25b8a499098854f27bc7a262f8e08c9f7d76ab")] //ScriptHash
+        public static extern object WNeoContract(string method, object[] args);
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AKpBvxcYeueHHLFXUAshFHwreYTGXTMH2y");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -127,7 +130,7 @@ namespace PNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-17 13:35:10";
+            var magicstr = "2018-04-19 13:35:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -193,6 +196,50 @@ namespace PNeoContract1
                     if (args.Length != 0) return 0;
                     return MintTokens();
                 }
+
+                if (operation == "exWtoP")
+                {
+                    if (args.Length != 2) return false;
+
+                    byte[] addr = (byte[])args[0];
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+                    
+                    BigInteger value = (BigInteger)args[1];
+
+                    /*查询WNeo余额*/
+                    object obj = WNeoContract("balanceOf", args);
+
+                    BigInteger balance = (BigInteger)obj;
+
+                    if (balance < value)  return false;
+
+                    if ((bool)WNeoContract("WNeoToPNeo", args)) return false;
+
+                    return Increase(addr, value);
+                }
+
+                if (operation == "exPtoW")
+                {
+                    if (args.Length != 2) return false;
+
+                    byte[] addr = (byte[])args[0];
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+
+                    BigInteger value = (BigInteger)args[2];
+
+                    /*查询PNeo余额*/ 
+                    BigInteger balance = BalanceOf(addr);
+
+                    if (balance < value) return false;
+
+                    if ((bool)WNeoContract("PNeoToWNeo", args)) return false;
+
+                    return Destory(addr, value);
+
+                }
+
             }
             return false;
         }
@@ -421,14 +468,45 @@ namespace PNeoContract1
             return false;
         }
 
+        //增发货币
+        public static bool Increase(byte[] admin, BigInteger value)
+        {
+            if (value <= 0) return false;
+            if (!Runtime.CheckWitness(admin)) return false;
+
+            BigInteger total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
+            BigInteger total_admin = Storage.Get(Storage.CurrentContext, admin).AsBigInteger();
+            total_supply += value;
+            total_admin += value;
+            Storage.Put(Storage.CurrentContext, admin, total_admin);
+            Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
+            return true;
+        }
+
+        //销毁货币
+        public static bool Destory(byte[] admin, BigInteger value)
+        {
+            if (value <= 0) return false;
+            if (!Runtime.CheckWitness(admin)) return false;
+
+            BigInteger total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
+            BigInteger total_admin = Storage.Get(Storage.CurrentContext, admin).AsBigInteger();
+
+            if (value > total_admin) return false;
+
+            total_supply -= value;
+            total_admin -= value;
+            Storage.Put(Storage.CurrentContext, admin, total_admin);
+            Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
+            return true;
+        }
 
         private static byte[] IntToBytes(BigInteger value)
         {
             byte[] buffer = value.ToByteArray();
             return buffer;
         }
-
-
+        
         private static BigInteger BytesToInt(byte[] array)
         {
             var buffer = new BigInteger(array);
