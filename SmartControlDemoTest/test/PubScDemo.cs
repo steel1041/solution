@@ -11,7 +11,7 @@ namespace smartContractDemo
     class PubScDemo:ITest
     {
 
-        string api = "https://api.nel.group/api/testnet";
+        string api = "http://192.168.0.101:59908/api/privatenet";
 
         string id_GAS = "0x602c79718b16e442de58778e148d0b1084e3b2dffd5de6b7b16cee7969282de7";
 
@@ -35,20 +35,21 @@ namespace smartContractDemo
 
             //从文件中读取合约脚本
             //byte[] script = System.IO.File.ReadAllBytes("Nep5.avm"); //这里填你的合约所在地址
-            byte[] script = System.IO.File.ReadAllBytes("{合约avm路径}"); //这里填你的合约所在地址
+            string filePath = "C:\\Users\\cheng\\source\\repos\\AlchemintSolution\\WNeoContract1\\bin\\Debug\\0xc03edb24251796f243e8555f2b47b9865071e281.avm";
+            byte[] script = System.IO.File.ReadAllBytes(filePath); //这里填你的合约所在地址
             //Console.WriteLine("合约脚本:"+ThinNeo.Helper.Bytes2HexString(script));
             //Console.WriteLine("合约脚本hash："+ThinNeo.Helper.Bytes2HexString(ThinNeo.Helper.GetScriptHashFromScript(script).Reverse().ToArray()));
             //byte[] parameter__list = ThinNeo.Helper.HexString2Bytes("0610");  //这里填合约入参  例：0610代表（string，[]）
-            byte[] parameter__list = ThinNeo.Helper.HexString2Bytes("{合约入参}");  //这里填合约入参  例：0610代表（string，[]）
+            byte[] parameter__list = ThinNeo.Helper.HexString2Bytes("0510");  //这里填合约入参  例：0610代表（string，[]）
             //byte[] return_type = ThinNeo.Helper.HexString2Bytes("05");  //这里填合约的出参
-            byte[] return_type = ThinNeo.Helper.HexString2Bytes("{合约出参}");  //这里填合约的出参
+            byte[] return_type = ThinNeo.Helper.HexString2Bytes("07");  //这里填合约的出参
             int need_storage = 1;   
             int need_nep4 = 0;
-            string name = "viko";
+            string name = "con";
             string version = "0";
-            string auther = "viko";
-            string email = "82604458@qq.com";
-            string description = "*****";
+            string auther = "steel";
+            string email = "390301608@qq.com";
+            string description = "*****描述";
             using (ThinNeo.ScriptBuilder sb = new ThinNeo.ScriptBuilder())
             {
                 //倒叙插入数据

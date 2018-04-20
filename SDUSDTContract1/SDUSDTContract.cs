@@ -23,10 +23,10 @@ namespace SDUSDTContract1
         public static event Action<byte[], byte[], BigInteger> Approved;
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AKpBvxcYeueHHLFXUAshFHwreYTGXTMH2y");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe");
 
         //调用PNeo合约
-        [Appcall("cff5a8487aea09361f0f868e72a1055274a5754d")]
+        [Appcall("79a0d9929b4882be875f5057c2e192757e8af91b")]
         public static extern Boolean PNeoContract(string operation, params object[] args);
 
         //nep5 func
@@ -131,7 +131,7 @@ namespace SDUSDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-17 13:35:10";
+            var magicstr = "2018-04-20 17:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -236,7 +236,7 @@ namespace SDUSDTContract1
             //已经有在仓的CDP就不重新建
             var key = addr.Concat(ConvertN(0));
             byte[] cdp = Storage.Get(Storage.CurrentContext, key);
-            if (cdp.Length != 0)
+            if (cdp.Length > 0)
                 return false;
 
             //交易ID 
@@ -259,16 +259,16 @@ namespace SDUSDTContract1
             //CDP是否存在
             var key = addr.Concat(ConvertN(0));
             byte[] cdp = Storage.Get(Storage.CurrentContext, key);
-            if (cdp.Length != 0) {
+            if (cdp.Length == 0) {
                 return false;
             }
 
             //销毁PNeo
-            object[] args = new object[] { };
-            args[0] = addr;
-            args[1] = lockMount;
+            //object[] args = new object[] { };
+            //args[0] = addr;
+            //args[1] = lockMount;
 
-            if(!PNeoContract("destory",args))return false;
+            if(!PNeoContract("destory",addr,lockMount))return false;
 
             //设置锁仓的数量
             CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
@@ -298,7 +298,7 @@ namespace SDUSDTContract1
             //CDP是否存在
             var key = addr.Concat(ConvertN(0));
             byte[] cdp = Storage.Get(Storage.CurrentContext, key);
-            if (cdp.Length != 0)
+            if (cdp.Length == 0)
                 return false;
 
             CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
