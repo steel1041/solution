@@ -22,11 +22,11 @@ namespace PNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
          
-        [Appcall("0b25b8a499098854f27bc7a262f8e08c9f7d76ab")] //ScriptHash
+        [Appcall("c03edb24251796f243e8555f2b47b9865071e281")] //ScriptHash
         public static extern object WNeoContract(string method, object[] args);
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe");
 
         //nep5 func
         public static BigInteger TotalSupply()

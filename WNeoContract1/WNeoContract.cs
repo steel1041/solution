@@ -23,7 +23,7 @@ namespace WNeoContract1
         public static event Action<byte[], byte[], BigInteger> Approved;
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -127,7 +127,7 @@ namespace WNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-18 16:35:10";
+            var magicstr = "2018-04-20 14:35:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -286,23 +286,23 @@ namespace WNeoContract1
                 return null;
 
             //老式实现方法
-            TransferInfo info = new TransferInfo();
-            int seek = 0;
-            var fromlen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            seek += 2;
-            info.from = v.AsString().Substring(seek, fromlen).AsByteArray();
-            seek += fromlen;
-            var tolen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            seek += 2;
-            info.to = v.AsString().Substring(seek, tolen).AsByteArray();
-            seek += tolen;
-            var valuelen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            seek += 2;
-            info.value = v.AsString().Substring(seek, valuelen).AsByteArray().AsBigInteger();
-            return info;
+            //TransferInfo info = new TransferInfo();
+            //int seek = 0;
+            //var fromlen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            //seek += 2;
+            //info.from = v.AsString().Substring(seek, fromlen).AsByteArray();
+            //seek += fromlen;
+            //var tolen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            //seek += 2;
+            //info.to = v.AsString().Substring(seek, tolen).AsByteArray();
+            //seek += tolen;
+            //var valuelen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            //seek += 2;
+            //info.value = v.AsString().Substring(seek, valuelen).AsByteArray().AsBigInteger();
+            //return info;
 
             //新式实现方法只要一行
-            // return Helper.Deserialize(v) as TransferInfo;
+            return (TransferInfo)Helper.Deserialize(v);
         }
 
         private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
@@ -315,12 +315,12 @@ namespace WNeoContract1
             info.value = value;
 
             //用一个老式实现法
-            byte[] txinfo = byteLen(info.from.Length).Concat(info.from);
-            txinfo = txinfo.Concat(byteLen(info.to.Length)).Concat(info.to);
-            byte[] _value = value.AsByteArray();
-            txinfo = txinfo.Concat(byteLen(_value.Length)).Concat(_value);
+            //byte[] txinfo = byteLen(info.from.Length).Concat(info.from);
+            //txinfo = txinfo.Concat(byteLen(info.to.Length)).Concat(info.to);
+            //byte[] _value = value.AsByteArray();
+            //txinfo = txinfo.Concat(byteLen(_value.Length)).Concat(_value);
             //新式实现方法只要一行
-            //byte[] txinfo = Helper.Serialize(info);
+            byte[] txinfo = Helper.Serialize(info);
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             Storage.Put(Storage.CurrentContext, txid, txinfo);
@@ -345,7 +345,7 @@ namespace WNeoContract1
             TransactionOutput[] outputs = tx.GetOutputs();
             ulong value = 0;
             // get the total amount of Neo
-            // 获取转入智能合约地址的Gas总量
+            // 获取转入智能合约地址的NEO总量
             foreach (TransactionOutput output in outputs)
             {
                 if (output.ScriptHash == ExecutionEngine.ExecutingScriptHash &&
