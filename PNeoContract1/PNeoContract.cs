@@ -239,6 +239,26 @@ namespace PNeoContract1
                     return Destory(addr, value);
 
                 }
+                //销毁代币，直接方法，风险极高
+                if (operation == "destory")
+                {
+                    if (args.Length != 2) return false;
+                    byte[] addr = (byte[])args[0];
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+                    BigInteger value = (BigInteger)args[1];
+                    return Destory(addr, value);
+                }
+                //增发代币，直接方法，风险极高
+                if (operation == "increase")
+                {
+                    if (args.Length != 2) return false;
+                    byte[] addr = (byte[])args[0];
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+                    BigInteger value = (BigInteger)args[1];
+                    return Increase(addr, value);
+                }
 
             }
             return false;
@@ -251,23 +271,23 @@ namespace PNeoContract1
                 return null;
 
             //老式实现方法
-            TransferInfo info = new TransferInfo();
-            int seek = 0;
-            var fromlen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            seek += 2;
-            info.from = v.AsString().Substring(seek, fromlen).AsByteArray();
-            seek += fromlen;
-            var tolen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            seek += 2;
-            info.to = v.AsString().Substring(seek, tolen).AsByteArray();
-            seek += tolen;
-            var valuelen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            seek += 2;
-            info.value = v.AsString().Substring(seek, valuelen).AsByteArray().AsBigInteger();
-            return info;
+            //TransferInfo info = new TransferInfo();
+            //int seek = 0;
+            //var fromlen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            //seek += 2;
+            //info.from = v.AsString().Substring(seek, fromlen).AsByteArray();
+            //seek += fromlen;
+            //var tolen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            //seek += 2;
+            //info.to = v.AsString().Substring(seek, tolen).AsByteArray();
+            //seek += tolen;
+            //var valuelen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            //seek += 2;
+            //info.value = v.AsString().Substring(seek, valuelen).AsByteArray().AsBigInteger();
+            //return info;
 
             //新式实现方法只要一行
-            // return Helper.Deserialize(v) as TransferInfo;
+            return (TransferInfo)Helper.Deserialize(v);
         }
 
         private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
@@ -280,12 +300,12 @@ namespace PNeoContract1
             info.value = value;
 
             //用一个老式实现法
-            byte[] txinfo = byteLen(info.from.Length).Concat(info.from);
-            txinfo = txinfo.Concat(byteLen(info.to.Length)).Concat(info.to);
-            byte[] _value = value.AsByteArray();
-            txinfo = txinfo.Concat(byteLen(_value.Length)).Concat(_value);
+            //byte[] txinfo = byteLen(info.from.Length).Concat(info.from);
+            //txinfo = txinfo.Concat(byteLen(info.to.Length)).Concat(info.to);
+            //byte[] _value = value.AsByteArray();
+            //txinfo = txinfo.Concat(byteLen(_value.Length)).Concat(_value);
             //新式实现方法只要一行
-            //byte[] txinfo = Helper.Serialize(info);
+            byte[] txinfo = Helper.Serialize(info);
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             Storage.Put(Storage.CurrentContext, txid, txinfo);
@@ -469,34 +489,29 @@ namespace PNeoContract1
         }
 
         //增发货币
-        public static bool Increase(byte[] admin, BigInteger value)
+        public static bool Increase(byte[] to, BigInteger value)
         {
             if (value <= 0) return false;
-            if (!Runtime.CheckWitness(admin)) return false;
+            if (!Runtime.CheckWitness(to)) return false;
+
+            Transfer(null, to, value);
 
             BigInteger total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            BigInteger total_admin = Storage.Get(Storage.CurrentContext, admin).AsBigInteger();
             total_supply += value;
-            total_admin += value;
-            Storage.Put(Storage.CurrentContext, admin, total_admin);
             Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
             return true;
         }
 
         //销毁货币
-        public static bool Destory(byte[] admin, BigInteger value)
+        public static bool Destory(byte[] from, BigInteger value)
         {
             if (value <= 0) return false;
-            if (!Runtime.CheckWitness(admin)) return false;
+            if (!Runtime.CheckWitness(from)) return false;
+
+            Transfer(from, null, value);
 
             BigInteger total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            BigInteger total_admin = Storage.Get(Storage.CurrentContext, admin).AsBigInteger();
-
-            if (value > total_admin) return false;
-
             total_supply -= value;
-            total_admin -= value;
-            Storage.Put(Storage.CurrentContext, admin, total_admin);
             Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
             return true;
         }

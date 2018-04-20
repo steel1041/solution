@@ -27,7 +27,7 @@ namespace SDUSDTContract1
 
         //调用PNeo合约
         [Appcall("cff5a8487aea09361f0f868e72a1055274a5754d")]
-        public static extern int PNeoContract(string operation, params object[] args);
+        public static extern Boolean PNeoContract(string operation, params object[] args);
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -259,11 +259,16 @@ namespace SDUSDTContract1
             //CDP是否存在
             var key = addr.Concat(ConvertN(0));
             byte[] cdp = Storage.Get(Storage.CurrentContext, key);
-            if (cdp.Length != 0)
+            if (cdp.Length != 0) {
                 return false;
+            }
 
             //销毁PNeo
-            //... to do 
+            object[] args = new object[] { };
+            args[0] = addr;
+            args[1] = lockMount;
+
+            if(!PNeoContract("destory",args))return false;
 
             //设置锁仓的数量
             CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);

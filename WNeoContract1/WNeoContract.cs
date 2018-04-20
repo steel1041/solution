@@ -503,34 +503,29 @@ namespace WNeoContract1
         }
 
         //增发货币
-        public static bool Increase(byte[] admin, BigInteger value)
+        public static bool Increase(byte[] to, BigInteger value)
         {
             if (value <= 0) return false;
-            if (!Runtime.CheckWitness(admin)) return false;
+            if (!Runtime.CheckWitness(to)) return false;
+
+            Transfer(null, to, value);
 
             BigInteger total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            BigInteger total_admin = Storage.Get(Storage.CurrentContext, admin).AsBigInteger();
             total_supply += value;
-            total_admin += value;
-            Storage.Put(Storage.CurrentContext, admin, total_admin);
             Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
             return true;
         }
 
         //销毁货币
-        public static bool Destory(byte[] admin, BigInteger value)
+        public static bool Destory(byte[] from, BigInteger value)
         {
             if (value <= 0) return false;
-            if (!Runtime.CheckWitness(admin)) return false;
+            if (!Runtime.CheckWitness(from)) return false;
+
+            Transfer(from, null, value);
 
             BigInteger total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            BigInteger total_admin = Storage.Get(Storage.CurrentContext, admin).AsBigInteger();
-
-            if (value > total_admin) return false;
-
             total_supply -= value;
-            total_admin -= value;
-            Storage.Put(Storage.CurrentContext, admin, total_admin);
             Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
             return true;
         }
