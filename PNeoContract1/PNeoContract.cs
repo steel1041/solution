@@ -130,7 +130,7 @@ namespace PNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-19 13:35:10";
+            var magicstr = "2018-04-20 14:35:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -206,14 +206,7 @@ namespace PNeoContract1
                     if (!Runtime.CheckWitness(addr)) return false;
                     
                     BigInteger value = (BigInteger)args[1];
-
-                    /*查询WNeo余额*/
-                    object obj = WNeoContract("balanceOf", args);
-
-                    BigInteger balance = (BigInteger)obj;
-
-                    if (balance < value)  return false;
-
+                    
                     if ((bool)WNeoContract("WNeoToPNeo", args)) return false;
 
                     return Increase(addr, value);
@@ -237,8 +230,8 @@ namespace PNeoContract1
                     if ((bool)WNeoContract("PNeoToWNeo", args)) return false;
 
                     return Destory(addr, value);
-
                 }
+
                 //销毁代币，直接方法，风险极高
                 if (operation == "destory")
                 {

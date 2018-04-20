@@ -248,26 +248,28 @@ namespace WNeoContract1
 
 
                 if (operation == "WNeoToPNeo")
-                {
+                { 
+                    if (args.Length != 2) return false;
+
                     byte[] addr = (byte[])args[0];
 
                     if (!Runtime.CheckWitness(addr)) return false;
+                     
+                    BigInteger value = (BigInteger)args[1];
 
-                    if (args.Length != 2) return false;
-
-                    BigInteger value = (BigInteger)args[1]; 
+                    if (value > BalanceOf(addr)) return false;
 
                     return  Destory(addr, value); 
                 }
 
                 if (operation == "PNeoToWNeo")
-                {
+                { 
+                    if (args.Length != 2) return false;
+
                     byte[] addr = (byte[])args[0];
 
                     if (!Runtime.CheckWitness(addr)) return false;
-
-                    if (args.Length != 2) return false;
-
+                     
                     BigInteger value = (BigInteger)args[1];
 
                     return Increase(addr, value);
