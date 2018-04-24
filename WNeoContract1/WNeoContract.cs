@@ -127,7 +127,7 @@ namespace WNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-20 14:35:10";
+            var magicstr = "2018-04-20 17:37:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
