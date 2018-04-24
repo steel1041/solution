@@ -22,6 +22,7 @@ namespace SDUSDTContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
 
+
         //超级管理员账户
         private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe");
 

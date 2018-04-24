@@ -237,7 +237,7 @@ namespace PNeoContract1
                 {
                     if (args.Length != 2) return false;
                     byte[] addr = (byte[])args[0];
-
+                        
                     if (!Runtime.CheckWitness(addr)) return false;
                     BigInteger value = (BigInteger)args[1];
                     return Destory(addr, value);
