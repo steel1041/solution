@@ -220,7 +220,7 @@ namespace PNeoContract1
 
                     if (!Runtime.CheckWitness(addr)) return false;
 
-                    BigInteger value = (BigInteger)args[2];
+                    BigInteger value = (BigInteger)args[1];
 
                     /*查询PNeo余额*/ 
                     BigInteger balance = BalanceOf(addr);
