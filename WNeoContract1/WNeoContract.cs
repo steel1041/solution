@@ -23,7 +23,8 @@ namespace WNeoContract1
         public static event Action<byte[], byte[], BigInteger> Approved;
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe");
+        //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe"); 
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn"); 
 
         //nep5 func
         public static BigInteger TotalSupply()

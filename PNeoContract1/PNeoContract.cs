@@ -22,11 +22,13 @@ namespace PNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
          
-        [Appcall("c03edb24251796f243e8555f2b47b9865071e281")] //ScriptHash
+        //[Appcall("c03edb24251796f243e8555f2b47b9865071e281")] //ScriptHash
+        [Appcall("c872749735ee4875ee11ad986ecedc9b56c26f62")] //ScriptHash
         public static extern object WNeoContract(string method, object[] args);
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe");
+        //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe"); 
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -130,7 +132,7 @@ namespace PNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-23 10:38:10";
+            var magicstr = "2018-04-24 10:38:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -207,7 +209,7 @@ namespace PNeoContract1
                     
                     BigInteger value = (BigInteger)args[1];
                     
-                    if ((bool)WNeoContract("WNeoToPNeo", args)) return false;
+                    if (!(bool)WNeoContract("WNeoToPNeo", args)) return false;
 
                     return Increase(addr, value);
                 }
@@ -227,7 +229,7 @@ namespace PNeoContract1
 
                     if (balance < value) return false;
 
-                    if ((bool)WNeoContract("PNeoToWNeo", args)) return false;
+                    if (!(bool)WNeoContract("PNeoToWNeo", args)) return false;
 
                     return Destory(addr, value);
                 }
