@@ -154,7 +154,7 @@ namespace SDUSDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-25 09:40:10";
+            var magicstr = "2018-04-25 14:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -561,41 +561,16 @@ namespace SDUSDTContract1
             byte[] v = Storage.Get(Storage.CurrentContext, txid);
             if (v.Length == 0)
                 return null;
-
-            //老式实现方法
-            //TransferInfo info = new TransferInfo();
-            //int seek = 0;
-            //var fromlen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            //seek += 2;
-            //info.from = v.AsString().Substring(seek, fromlen).AsByteArray();
-            //seek += fromlen;
-            //var tolen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            //seek += 2;
-            //info.to = v.AsString().Substring(seek, tolen).AsByteArray();
-            //seek += tolen;
-            //var valuelen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            //seek += 2;
-            //info.value = v.AsString().Substring(seek, valuelen).AsByteArray().AsBigInteger();
-            //return info;
-
             //新式实现方法只要一行
             return (TransferInfo)Helper.Deserialize(v);
         }
 
         private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
         {
-            //因为testnet 还在2.6，限制
             TransferInfo info = new TransferInfo();
             info.from = from;
             info.to = to;
             info.value = value;
-
-            //用一个老式实现法
-            //byte[] txinfo = byteLen(info.from.Length).Concat(info.from);
-            //txinfo = txinfo.Concat(byteLen(info.to.Length)).Concat(info.to);
-            //byte[] _value = value.AsByteArray();
-            //txinfo = txinfo.Concat(byteLen(_value.Length)).Concat(_value);
-            //新式实现方法只要一行
             byte[] txinfo = Helper.Serialize(info);
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
