@@ -16,9 +16,6 @@ namespace SDUSDTContract1
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
-        [DisplayName("refund")]
-        public static event Action<byte[], byte[], BigInteger> Refunded;
-
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
 
@@ -65,6 +62,16 @@ namespace SDUSDTContract1
 
         //交易类型-关闭
         private const string TRANSACTION_TYPE_SHUT = "5";
+
+        //配置参数-兑换比率，百分位，如150、200
+        private const string CONFIG_RATE = "rate";
+
+        //配置参数-NEO市场价格
+        private const string CONFIG_PRICE_NEO = "neo_price";
+
+        //配置参数-GAS市场价格
+        private const string CONFIG_PRICE_GAS = "gas_price";
+
 
         public static byte Decimals()
         {
@@ -147,7 +154,7 @@ namespace SDUSDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-23 10:40:10";
+            var magicstr = "2018-04-25 09:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -270,10 +277,10 @@ namespace SDUSDTContract1
             return false;
         }
 
-        private static byte[] GetConfig(string key)
+        private static BigInteger GetConfig(string key)
         {
-            if (key == null || key == "") return null;
-            return  Storage.Get(Storage.CurrentContext,key.AsByteArray());
+            if (key == null || key == "") return 0;
+            return  Storage.Get(Storage.CurrentContext,key.AsByteArray()).AsBigInteger();
         }
 
         private static Boolean SetConfig(string key, BigInteger value)
@@ -357,6 +364,18 @@ namespace SDUSDTContract1
             return true;
         }
 
+        /// <summary>
+        ///   This method is free pneo asset.
+        /// </summary>
+        /// <param name="addr">
+        ///     The address being invoked.
+        /// </param>
+        /// <param name="freeMount">
+        ///     The mount need free,it's pneo.
+        /// </param>
+        /// <returns>
+        ///     Return Boolean
+        /// </returns>
         private static Boolean Free(byte[] addr, BigInteger freeMount)
         {
             if (freeMount <= 0) return false;
@@ -373,12 +392,12 @@ namespace SDUSDTContract1
             BigInteger hasDrawed = cdpInfo.hasDrawed;
 
             //当前NEO美元价格，需要从价格中心获取
-            BigInteger neoPrice = 100;
+            BigInteger neoPrice = GetConfig(CONFIG_PRICE_NEO);
             //当前兑换率，需要从配置中心获取
-            BigInteger rate = 150;
+            BigInteger rate = GetConfig(CONFIG_RATE);
 
             //计算已经兑换过的PNEO量
-            BigInteger hasDrawPNeo = hasDrawed * rate / 100 * neoPrice;
+            BigInteger hasDrawPNeo = hasDrawed * rate / (100 * neoPrice);
 
             //释放的总量大于已经剩余，不能操作
             if (freeMount > locked - hasDrawPNeo) return false;
@@ -470,7 +489,6 @@ namespace SDUSDTContract1
             if (drawMount <= 0) return false;
             if (!Runtime.CheckWitness(addr)) return false;
 
-            //兑换比率150%
             //CDP是否存在
             var key = addr.Concat(ConvertN(0));
             byte[] cdp = Storage.Get(Storage.CurrentContext, key);
@@ -482,9 +500,9 @@ namespace SDUSDTContract1
             BigInteger hasDrawed = cdpInfo.hasDrawed;
 
             //当前NEO美元价格，需要从价格中心获取
-            BigInteger neoPrice = 100;
+            BigInteger neoPrice = GetConfig(CONFIG_PRICE_NEO);
             //当前兑换率，需要从配置中心获取
-            BigInteger rate = 150;
+            BigInteger rate = GetConfig(CONFIG_RATE);
 
             //计算总共能兑换的量
             BigInteger allSd =locked * neoPrice*100/rate;
