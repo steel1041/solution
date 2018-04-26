@@ -63,6 +63,9 @@ namespace SDUSDTContract1
         //交易类型-关闭
         private const string TRANSACTION_TYPE_SHUT = "5";
 
+        //交易类型-对手关闭
+        private const string TRANSACTION_TYPE_FORCESHUT = "6";
+
         //配置参数-兑换比率，百分位，如150、200
         private const string CONFIG_RATE = "rate";
 
@@ -273,8 +276,53 @@ namespace SDUSDTContract1
                     byte[] addr = (byte[])args[0];
                     return Shut(addr);
                 }
+                //强制关闭在仓，由别人发起
+                if (operation == "forceShut")
+                {
+                    if (args.Length != 1) return false;
+                    byte[] otherAddr = (byte[])args[0];
+                    byte[] addr = (byte[])args[1];
+
+                    return ForceShut(otherAddr,addr);
+                }
             }
             return false;
+        }
+
+        private static Boolean ForceShut(byte[] otherAddr, byte[] addr)
+        {
+            if (!Runtime.CheckWitness(addr)) return false;
+            //CDP是否存在
+            var key = otherAddr.Concat(ConvertN(0));
+            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
+            if (cdp.Length == 0)
+                return false;
+
+            CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
+            BigInteger locked = cdpInfo.locked;
+            BigInteger hasDrawed = cdpInfo.hasDrawed;
+
+            //返还所有PNEO
+            if (!PNeoContract("increase", addr, locked)) return false;
+
+            //to do ... 还需要转让剩余的pneo给对方
+
+            //销毁SD
+            Transfer(addr, null, hasDrawed*9/10);
+
+            Storage.Delete(Storage.CurrentContext, key);
+
+            //记录交易详细数据
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            CDPTransferDetail detail = new CDPTransferDetail();
+            detail.from = addr;
+            detail.cdpTxid = cdpInfo.txid;
+            detail.type = TRANSACTION_TYPE_FORCESHUT;
+            detail.locked = 0;
+            detail.hasLocked = locked;
+            detail.drawed = hasDrawed;
+            Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
+            return true;
         }
 
         private static BigInteger GetConfig(string key)
@@ -286,6 +334,8 @@ namespace SDUSDTContract1
         private static Boolean SetConfig(string key, BigInteger value)
         {
             if (key == null || key == "") return false;
+            if (!Runtime.CheckWitness(SuperAdmin)) return false;
+
             Storage.Put(Storage.CurrentContext,key.AsByteArray(),value);
             return true;
         }
@@ -309,7 +359,6 @@ namespace SDUSDTContract1
             //先要销毁SD
             Transfer(addr, null, hasDrawed);
 
-            cdpInfo.hasDrawed = 0;
             Storage.Delete(Storage.CurrentContext,key);
 
             //记录交易详细数据

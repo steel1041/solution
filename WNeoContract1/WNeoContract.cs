@@ -586,6 +586,7 @@ namespace WNeoContract1
         private static Boolean SetConfig(string key, BigInteger value)
         {
             if (key == null || key == "") return false;
+            if (!Runtime.CheckWitness(SuperAdmin)) return false;
             Storage.Put(Storage.CurrentContext, key.AsByteArray(), value);
             return true;
         }

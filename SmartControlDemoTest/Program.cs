@@ -41,6 +41,7 @@ namespace smartContractDemo
             RegTest(new Nep55_2());
             RegTest(new Nep55_3());
             RegTest(new Nep55_4());
+            RegTest(new SCGetTXInfo());
         }
         static void ShowMenu()
         {
