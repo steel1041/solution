@@ -355,6 +355,7 @@ namespace WNeoContract1
         public static bool MintTokens(string type)
         {
             var tx = (Transaction)ExecutionEngine.ScriptContainer;
+             
             //默认是neo资产   neo,gas
             byte[] asset_id = neo_asset_id;
             if (type == "gas") {
