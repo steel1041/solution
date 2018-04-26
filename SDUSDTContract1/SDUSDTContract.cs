@@ -222,7 +222,7 @@ namespace SDUSDTContract1
                     BigInteger value = (BigInteger)args[1];
                     return SetConfig(key,value);
                 }
-                //设置全局参数
+                //查询全局参数
                 if (operation == "getConfig")
                 {
                     if (args.Length != 1) return false;

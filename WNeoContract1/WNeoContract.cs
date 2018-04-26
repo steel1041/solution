@@ -13,6 +13,10 @@ namespace WNeoContract1
         //NEO Asset
         private static readonly byte[] neo_asset_id = { 155, 124, 255, 218, 166, 116, 190, 174, 15, 147, 14, 190, 96, 133, 175, 144, 147, 229, 254, 86, 179, 74, 92, 34, 12, 205, 207, 110, 252, 51, 111, 197 };
 
+        //gas 0x602c79718b16e442de58778e148d0b1084e3b2dffd5de6b7b16cee7969282de7
+        //反序  e72d286979ee6cb1b7e65dfddfb2e384100b8d148e7758de42e4168b71792c60
+        private static readonly byte[] gas_asset_id = Helper.HexToBytes("e72d286979ee6cb1b7e65dfddfb2e384100b8d148e7758de42e4168b71792c60");
+
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
@@ -22,9 +26,15 @@ namespace WNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
 
+        //配置参数-NEO市场价格
+        private const string CONFIG_PRICE_NEO = "neo_price";
+
+        //配置参数-GAS市场价格
+        private const string CONFIG_PRICE_GAS = "gas_price";
+
         //超级管理员账户
         //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe"); 
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn"); 
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7"); 
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -241,13 +251,28 @@ namespace WNeoContract1
                     byte[] txid = (byte[])args[0];
                     return GetTXInfo(txid);
                 }
+                //设置全局参数
+                if (operation == "setConfig")
+                {
+                    if (args.Length != 2) return false;
+                    string key = (string)args[0];
+                    BigInteger value = (BigInteger)args[1];
+                    return SetConfig(key, value);
+                }
+                //查询全局参数
+                if (operation == "getConfig")
+                {
+                    if (args.Length != 1) return false;
+                    string key = (string)args[0];
+
+                    return GetConfig(key);
+                }
                 if (operation == "mintTokens")
                 {
-                    if (args.Length != 0) return 0;
-                    return MintTokens();
+                    if (args.Length != 1) return 0;
+                    string type = (string)args[0];
+                    return MintTokens(type);
                 }
-
-
                 if (operation == "WNeoToPNeo")
                 { 
                     if (args.Length != 2) return false;
@@ -327,16 +352,20 @@ namespace WNeoContract1
             Storage.Put(Storage.CurrentContext, txid, txinfo);
         }
 
-        public static bool MintTokens()
+        public static bool MintTokens(string type)
         {
             var tx = (Transaction)ExecutionEngine.ScriptContainer;
-
-            //获取投资人，谁要换gas
+            //默认是neo资产   neo,gas
+            byte[] asset_id = neo_asset_id;
+            if (type == "gas") {
+                asset_id = gas_asset_id;
+            }
+            //获取投资人，谁要换neo or gas
             byte[] who = null;
             TransactionOutput[] reference = tx.GetReferences();
             for (var i = 0; i < reference.Length; i++)
             {
-                if (reference[i].AssetId.AsBigInteger() == neo_asset_id.AsBigInteger())
+                if (reference[i].AssetId.AsBigInteger() == asset_id.AsBigInteger())
                 {
                     who = reference[i].ScriptHash;
                     break;
@@ -350,19 +379,33 @@ namespace WNeoContract1
             foreach (TransactionOutput output in outputs)
             {
                 if (output.ScriptHash == ExecutionEngine.ExecutingScriptHash &&
-                    output.AssetId.AsBigInteger() == neo_asset_id.AsBigInteger())
+                    output.AssetId.AsBigInteger() == asset_id.AsBigInteger())
                 {
                     value += (ulong)output.Value;
                 }
             }
+            //获取实际兑换量
+            BigInteger realValue = getRealValue(type,value);
 
             //改变总量
             var total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            total_supply += value;
+            total_supply += realValue;
             Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
+            return Transfer(null, who, realValue);
+        }
 
-            //1:1 不用换算
-            return Transfer(null, who, value);
+        private static BigInteger getRealValue(string type, ulong value)
+        {
+            if (value <= 0) return 0;
+            if (type == "gas") {
+                BigInteger neoPrice = GetConfig(CONFIG_PRICE_NEO);
+                BigInteger gasPrice = GetConfig(CONFIG_PRICE_GAS);
+                if (neoPrice == 0 || gasPrice == 0) {
+                    return value * 2/10;
+                }
+                return value * (gasPrice/neoPrice);
+            }
+            return value;
         }
 
         public class TransferInfo
@@ -530,6 +573,19 @@ namespace WNeoContract1
             BigInteger total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
             total_supply -= value;
             Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
+            return true;
+        }
+
+        private static BigInteger GetConfig(string key)
+        {
+            if (key == null || key == "") return 0;
+            return Storage.Get(Storage.CurrentContext, key.AsByteArray()).AsBigInteger();
+        }
+
+        private static Boolean SetConfig(string key, BigInteger value)
+        {
+            if (key == null || key == "") return false;
+            Storage.Put(Storage.CurrentContext, key.AsByteArray(), value);
             return true;
         }
 
