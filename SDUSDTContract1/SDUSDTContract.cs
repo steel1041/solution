@@ -527,6 +527,7 @@ namespace SDUSDTContract1
             detail.locked = lockMount;
             detail.hasLocked = currLock;
             detail.drawed = 0;
+            detail.txid = txid;
 
             Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
             return true;

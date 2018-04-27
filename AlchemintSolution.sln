@@ -11,7 +11,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SDTContract1", "SDTContract
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SDUSDTContract1", "SDUSDTContract1\SDUSDTContract1.csproj", "{D495922C-FA4D-4C62-97A1-CD89BFF88504}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmartControlDemoTest", "SmartControlDemoTest\SmartControlDemoTest.csproj", "{46E08F4B-D2AD-47F1-AAE2-44D93301B06D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SmartControlDemoTest", "SmartControlDemoTest\SmartControlDemoTest.csproj", "{46E08F4B-D2AD-47F1-AAE2-44D93301B06D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
