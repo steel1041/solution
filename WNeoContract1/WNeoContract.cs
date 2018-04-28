@@ -199,6 +199,8 @@ namespace WNeoContract1
             }
             else if (Runtime.Trigger == TriggerType.Application)
             {
+                //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了
+                var callscript = ExecutionEngine.CallingScriptHash;
                 //this is in nep5
                 if (operation == "totalSupply") return TotalSupply();
                 if (operation == "name") return Name();
@@ -210,7 +212,6 @@ namespace WNeoContract1
                     byte[] account = (byte[])args[0];
                     return BalanceOf(account);
                 }
-                
                 if (operation == "transfer")
                 {
                     if (args.Length != 3) return false;
@@ -225,7 +226,7 @@ namespace WNeoContract1
                     if (!Runtime.CheckWitness(from))
                         return false;
                     //如果有跳板调用，不让转
-                    if (ExecutionEngine.EntryScriptHash.AsBigInteger() != ExecutionEngine.CallingScriptHash.AsBigInteger())
+                    if (ExecutionEngine.EntryScriptHash.AsBigInteger() != callscript.AsBigInteger())
                         return false;
                     return Transfer(from, to, value);
                 }
@@ -250,6 +251,21 @@ namespace WNeoContract1
                     if (args.Length != 1) return 0;
                     byte[] txid = (byte[])args[0];
                     return GetTXInfo(txid);
+                }
+                //退款
+                if (operation == "refund")
+                {
+                    if (args.Length != 1) return 0;
+                    byte[] who = (byte[])args[0];
+                    if (!Runtime.CheckWitness(who))
+                        return false;
+                    return Refund(who);
+                }
+                if (operation == "getRefundTarget")
+                {
+                    if (args.Length != 1) return 0;
+                    byte[] hash = (byte[])args[0];
+                    return getRefundTarget(hash);
                 }
                 //设置全局参数
                 if (operation == "setConfig")
@@ -305,27 +321,53 @@ namespace WNeoContract1
             return false;
         }
 
+
+        //退款
+        public static bool Refund(byte[] who)
+        {
+            var tx = (Transaction)ExecutionEngine.ScriptContainer;
+            var outputs = tx.GetOutputs();
+            //退的不是gas，不行
+            if (outputs[0].AssetId.AsBigInteger() != neo_asset_id.AsBigInteger())
+                return false;
+            //不是转给自身，不行
+            if (outputs[0].ScriptHash.AsBigInteger() != ExecutionEngine.ExecutingScriptHash.AsBigInteger())
+                return false;
+
+
+            //当前的交易已经名花有主了，不行
+            byte[] target = getRefundTarget(tx.Hash);
+            if (target.Length > 0)
+                return false;
+
+            //尝试销毁一定数量的代币
+            var count = outputs[0].Value;
+            bool b = Transfer(who, null, count);
+            if (!b)
+                return false;
+
+            //标记这个utxo归我所有
+            byte[] coinid = tx.Hash.Concat(new byte[] { 0, 0 });
+            Storage.Put(Storage.CurrentContext, coinid, who);
+            //改变总量
+            var total_supply = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            total_supply -= count;
+            Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, total_supply);
+            return true;
+        }
+
+        public static byte[] getRefundTarget(byte[] txid)
+        {
+            byte[] coinid = txid.Concat(new byte[] { 0, 0 });
+            byte[] target = Storage.Get(Storage.CurrentContext, coinid);
+            return target;
+        }
+
         public static TransferInfo GetTXInfo(byte[] txid)
         {
             byte[] v = Storage.Get(Storage.CurrentContext, txid);
             if (v.Length == 0)
                 return null;
-
-            //老式实现方法
-            //TransferInfo info = new TransferInfo();
-            //int seek = 0;
-            //var fromlen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            //seek += 2;
-            //info.from = v.AsString().Substring(seek, fromlen).AsByteArray();
-            //seek += fromlen;
-            //var tolen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            //seek += 2;
-            //info.to = v.AsString().Substring(seek, tolen).AsByteArray();
-            //seek += tolen;
-            //var valuelen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
-            //seek += 2;
-            //info.value = v.AsString().Substring(seek, valuelen).AsByteArray().AsBigInteger();
-            //return info;
 
             //新式实现方法只要一行
             return (TransferInfo)Helper.Deserialize(v);
@@ -333,19 +375,10 @@ namespace WNeoContract1
 
         private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
         {
-            //因为testnet 还在2.6，限制
-
             TransferInfo info = new TransferInfo();
             info.from = from;
             info.to = to;
             info.value = value;
-
-            //用一个老式实现法
-            //byte[] txinfo = byteLen(info.from.Length).Concat(info.from);
-            //txinfo = txinfo.Concat(byteLen(info.to.Length)).Concat(info.to);
-            //byte[] _value = value.AsByteArray();
-            //txinfo = txinfo.Concat(byteLen(_value.Length)).Concat(_value);
-            //新式实现方法只要一行
             byte[] txinfo = Helper.Serialize(info);
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
