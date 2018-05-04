@@ -348,11 +348,11 @@ namespace WNeoContract1
 
             //标记这个utxo归我所有
             byte[] coinid = tx.Hash.Concat(new byte[] { 0, 0 });
-            Storage.Put(Storage.CurrentContext, coinid, who);
+            Storage.Put(Storage.CurrentContext,coinid, who);
             //改变总量
-            var total_supply = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            var total_supply = Storage.Get(Storage.CurrentContext,TOTAL_SUPPLY).AsBigInteger();
             total_supply -= count;
-            Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, total_supply);
+            Storage.Put(Storage.CurrentContext,TOTAL_SUPPLY, total_supply);
             return true;
         }
 

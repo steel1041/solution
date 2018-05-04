@@ -23,7 +23,7 @@ namespace SDTContract1
         public static event Action<byte[], byte[], BigInteger> Approved;
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AKpBvxcYeueHHLFXUAshFHwreYTGXTMH2y");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -32,7 +32,7 @@ namespace SDTContract1
         }
         public static string Name()
         {
-            return "Special Drawing Token";
+            return "Special Drawing Token4";
         }
         public static string Symbol()
         {
@@ -127,7 +127,7 @@ namespace SDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-17 13:35:10";
+            var magicstr = "2018-05-04 18:30:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -138,6 +138,8 @@ namespace SDTContract1
             }
             else if (Runtime.Trigger == TriggerType.Application)
             {
+                //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了
+                var callscript = ExecutionEngine.CallingScriptHash;
                 //this is in nep5
                 if (operation == "totalSupply") return TotalSupply();
                 if (operation == "name") return Name();
@@ -167,7 +169,7 @@ namespace SDTContract1
                     if (!Runtime.CheckWitness(from))
                         return false;
                     //如果有跳板调用，不让转
-                    if (ExecutionEngine.EntryScriptHash.AsBigInteger() != ExecutionEngine.CallingScriptHash.AsBigInteger())
+                    if (ExecutionEngine.EntryScriptHash.AsBigInteger() != callscript.AsBigInteger())
                         return false;
                     return Transfer(from, to, value);
                 }
@@ -211,21 +213,21 @@ namespace SDTContract1
             //老式实现方法
             TransferInfo info = new TransferInfo();
             int seek = 0;
-            var fromlen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            var fromlen = (int)v.Range(seek, 2).AsBigInteger();
             seek += 2;
-            info.from = v.AsString().Substring(seek, fromlen).AsByteArray();
+            info.from = v.Range(seek, fromlen);
             seek += fromlen;
-            var tolen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            var tolen = (int)v.Range(seek, 2).AsBigInteger();
             seek += 2;
-            info.to = v.AsString().Substring(seek, tolen).AsByteArray();
+            info.to = v.Range(seek, tolen);
             seek += tolen;
-            var valuelen = (int)v.AsString().Substring(seek, 2).AsByteArray().AsBigInteger();
+            var valuelen = (int)v.Range(seek, 2).AsBigInteger();
             seek += 2;
-            info.value = v.AsString().Substring(seek, valuelen).AsByteArray().AsBigInteger();
+            info.value = v.Range(seek, valuelen).AsBigInteger();
             return info;
 
             //新式实现方法只要一行
-            // return Helper.Deserialize(v) as TransferInfo;
+            //return (TransferInfo)Helper.Deserialize(v);
         }
 
         private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
@@ -238,16 +240,31 @@ namespace SDTContract1
             info.value = value;
 
             //用一个老式实现法
-            byte[] txinfo = byteLen(info.from.Length).Concat(info.from);
-            txinfo = txinfo.Concat(byteLen(info.to.Length)).Concat(info.to);
-            byte[] _value = value.AsByteArray();
-            txinfo = txinfo.Concat(byteLen(_value.Length)).Concat(_value);
+
+            //优化的拼包方法
+
+            var data = info.from;
+            var lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
+            //lendata是数据长度得bytearray，因为bigint长度不固定，统一加两个零，然后只取前面两个字节
+            //为什么要两个字节，因为bigint是含有符号位得，统一加个零安全，要不然长度129取一个字节就是负数了
+            var txinfo = lendata.Concat(data);
+
+            data = info.to;
+            lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
+            txinfo = txinfo.Concat(lendata).Concat(data);
+
+            data = value.AsByteArray();
+            lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
+            txinfo = txinfo.Concat(lendata).Concat(data);
             //新式实现方法只要一行
             //byte[] txinfo = Helper.Serialize(info);
 
-            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            var txid = (ExecutionEngine.ScriptContainer as Transaction).Hash;
             Storage.Put(Storage.CurrentContext, txid, txinfo);
         }
+
+        //把doublezero定义出来就好了，...... 要查编译器了
+        static readonly byte[] doublezero = new byte[2] { 0x00, 0x00 };
 
         public static bool MintTokens()
         {

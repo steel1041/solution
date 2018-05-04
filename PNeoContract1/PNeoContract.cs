@@ -141,6 +141,8 @@ namespace PNeoContract1
             }
             else if (Runtime.Trigger == TriggerType.Application)
             {
+                //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了
+                var callscript = ExecutionEngine.CallingScriptHash;
                 //this is in nep5
                 if (operation == "totalSupply") return TotalSupply();
                 if (operation == "name") return Name();
@@ -167,7 +169,7 @@ namespace PNeoContract1
                     if (!Runtime.CheckWitness(from))
                         return false;
                     //如果有跳板调用，不让转
-                    if (ExecutionEngine.EntryScriptHash.AsBigInteger() != ExecutionEngine.CallingScriptHash.AsBigInteger())
+                    if (ExecutionEngine.EntryScriptHash.AsBigInteger() != callscript.AsBigInteger())
                         return false;
                     return Transfer(from, to, value);
                 }
