@@ -327,13 +327,12 @@ namespace WNeoContract1
         {
             var tx = (Transaction)ExecutionEngine.ScriptContainer;
             var outputs = tx.GetOutputs();
-            //退的不是gas，不行
+            //退的不是neo，不行
             if (outputs[0].AssetId.AsBigInteger() != neo_asset_id.AsBigInteger())
                 return false;
             //不是转给自身，不行
             if (outputs[0].ScriptHash.AsBigInteger() != ExecutionEngine.ExecutingScriptHash.AsBigInteger())
                 return false;
-
 
             //当前的交易已经名花有主了，不行
             byte[] target = getRefundTarget(tx.Hash);

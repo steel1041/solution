@@ -21,7 +21,7 @@ namespace SDUSDTContract1
 
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p");
 
         //调用PNeo合约
         [Appcall("eb5e687828caff219738a60f632d4ba08027bf29")]
@@ -157,12 +157,11 @@ namespace SDUSDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-25 14:40:10";
+            var magicstr = "2018-05-07 15:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
                 return Runtime.CheckWitness(SuperAdmin);
-
             }
             else if (Runtime.Trigger == TriggerType.Application)
             {
@@ -242,6 +241,20 @@ namespace SDUSDTContract1
                     byte[] addr = (byte[])args[0];
                     return OpenCDP(addr);
                 }
+                //查询在仓记录
+                if (operation == "getCdp")
+                {
+                    if (args.Length != 1) return false;
+                    byte[] addr = (byte[])args[0];
+                    return GetCdp(addr);
+                }
+                //查询在仓详细操作记录
+                if (operation == "getCdpTxInfo")
+                {
+                    if (args.Length != 1) return false;
+                    byte[] txid = (byte[])args[0];
+                    return GetCdpTxInfo(txid);
+                }
                 //锁仓PNeo
                 if (operation=="lock") {
                     if (args.Length != 2) return false;
@@ -289,6 +302,25 @@ namespace SDUSDTContract1
                 }
             }
             return false;
+        }
+
+        private static CDPTransferDetail GetCdpTxInfo(byte[] txid)
+        {
+            byte[] v = Storage.Get(Storage.CurrentContext, txid);
+            if (v.Length == 0)
+                return null;
+            return (CDPTransferDetail)Helper.Deserialize(v);
+        }
+
+        private static CDPTransferInfo GetCdp(byte[] addr)
+        {
+            //CDP是否存在
+            var key = addr.Concat(ConvertN(0));
+            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
+            if (cdp.Length == 0)
+                return null;
+            CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
+            return cdpInfo;
         }
 
         private static Boolean ForceShut(byte[] otherAddr, byte[] addr)

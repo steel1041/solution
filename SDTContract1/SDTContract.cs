@@ -184,9 +184,14 @@ namespace SDTContract1
                     //args[0]发起人账户  args[1]被授权账户   args[2]被授权金额
                     return Approve((byte[])args[0], (byte[])args[1], (BigInteger)args[2]);
                 }
+                if (operation == "cancelApprove")
+                {
+                    //args[0]发起人账户  args[1]被授权账户
+                    return CancelApprove((byte[])args[0], (byte[])args[1]);
+                }
                 if (operation == "transferFrom")
                 {
-                    //args[0]转账账户  args[1]被授权账户 args[2]被转账账户   args[3]被授权金额
+                    //args[0]转账账户  args[1]被授权账户 args[2]被转账账户   args[3]被转账金额
                     return TransferFrom((byte[])args[0], (byte[])args[1], (byte[])args[2], (BigInteger)args[3]);
                 }
                 if (operation == "getTXInfo")
@@ -211,23 +216,23 @@ namespace SDTContract1
                 return null;
 
             //老式实现方法
-            TransferInfo info = new TransferInfo();
-            int seek = 0;
-            var fromlen = (int)v.Range(seek, 2).AsBigInteger();
-            seek += 2;
-            info.from = v.Range(seek, fromlen);
-            seek += fromlen;
-            var tolen = (int)v.Range(seek, 2).AsBigInteger();
-            seek += 2;
-            info.to = v.Range(seek, tolen);
-            seek += tolen;
-            var valuelen = (int)v.Range(seek, 2).AsBigInteger();
-            seek += 2;
-            info.value = v.Range(seek, valuelen).AsBigInteger();
-            return info;
+            //TransferInfo info = new TransferInfo();
+            //int seek = 0;
+            //var fromlen = (int)v.Range(seek, 2).AsBigInteger();
+            //seek += 2;
+            //info.from = v.Range(seek, fromlen);
+            //seek += fromlen;
+            //var tolen = (int)v.Range(seek, 2).AsBigInteger();
+            //seek += 2;
+            //info.to = v.Range(seek, tolen);
+            //seek += tolen;
+            //var valuelen = (int)v.Range(seek, 2).AsBigInteger();
+            //seek += 2;
+            //info.value = v.Range(seek, valuelen).AsBigInteger();
+            //return info;
 
             //新式实现方法只要一行
-            //return (TransferInfo)Helper.Deserialize(v);
+            return (TransferInfo)Helper.Deserialize(v);
         }
 
         private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
@@ -243,21 +248,21 @@ namespace SDTContract1
 
             //优化的拼包方法
 
-            var data = info.from;
-            var lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
-            //lendata是数据长度得bytearray，因为bigint长度不固定，统一加两个零，然后只取前面两个字节
-            //为什么要两个字节，因为bigint是含有符号位得，统一加个零安全，要不然长度129取一个字节就是负数了
-            var txinfo = lendata.Concat(data);
+            //var data = info.from;
+            //var lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
+            ////lendata是数据长度得bytearray，因为bigint长度不固定，统一加两个零，然后只取前面两个字节
+            ////为什么要两个字节，因为bigint是含有符号位得，统一加个零安全，要不然长度129取一个字节就是负数了
+            //var txinfo = lendata.Concat(data);
 
-            data = info.to;
-            lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
-            txinfo = txinfo.Concat(lendata).Concat(data);
+            //data = info.to;
+            //lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
+            //txinfo = txinfo.Concat(lendata).Concat(data);
 
-            data = value.AsByteArray();
-            lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
-            txinfo = txinfo.Concat(lendata).Concat(data);
+            //data = value.AsByteArray();
+            //lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
+            //txinfo = txinfo.Concat(lendata).Concat(data);
             //新式实现方法只要一行
-            //byte[] txinfo = Helper.Serialize(info);
+            byte[] txinfo = Helper.Serialize(info);
 
             var txid = (ExecutionEngine.ScriptContainer as Transaction).Hash;
             Storage.Put(Storage.CurrentContext, txid, txinfo);
@@ -385,6 +390,29 @@ namespace SDTContract1
             }
             Storage.Put(Storage.CurrentContext, owner.Concat(spender), amount);
             Approved(owner, spender, amount);
+            return true;
+        }
+
+        /// <summary>
+        ///   Cancel another account to transfer amount tokens from the owner acount
+        /// </summary>
+        /// <param name="owner">
+        ///   The account to invoke cancel approve.
+        /// </param>
+        /// <param name="spender">
+        ///   The account to grant TransferFrom access to.
+        /// </param>
+        /// </param>
+        /// <returns>
+        ///   Transaction Successful?
+        /// </returns>
+        public static bool CancelApprove(byte[] owner, byte[] spender)
+        {
+            if (owner.Length != 20 || spender.Length != 20) return false;
+            if (!Runtime.CheckWitness(owner)) return false;
+            if (owner == spender) return true;
+            Storage.Delete(Storage.CurrentContext, owner.Concat(spender));
+            Approved(owner, spender, 0);
             return true;
         }
 
