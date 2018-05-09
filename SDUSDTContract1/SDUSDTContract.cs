@@ -24,7 +24,7 @@ namespace SDUSDTContract1
         private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p");
 
         //调用PNeo合约
-        [Appcall("eb5e687828caff219738a60f632d4ba08027bf29")]
+        [Appcall("1e003cdc725c7b4113f0c608f8f44cdcbfde0411")]
         public static extern Boolean PNeoContract(string operation, params object[] args);
 
         //nep5 func
@@ -157,7 +157,7 @@ namespace SDUSDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-07 15:40:10";
+            var magicstr = "2018-05-09 15:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {

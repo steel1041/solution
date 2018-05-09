@@ -34,7 +34,7 @@ namespace WNeoContract1
 
         //超级管理员账户
         //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe"); 
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7"); 
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p"); 
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -138,7 +138,7 @@ namespace WNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-27 17:37:10";
+            var magicstr = "2018-05-09 17:37:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {

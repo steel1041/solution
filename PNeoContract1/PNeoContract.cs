@@ -22,13 +22,12 @@ namespace PNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
          
-        //[Appcall("c03edb24251796f243e8555f2b47b9865071e281")] //ScriptHash
-        [Appcall("c872749735ee4875ee11ad986ecedc9b56c26f62")] //ScriptHash
+        [Appcall("6c03e7b21cacc759d00f8a83219cba6fe4cebfa1")] //ScriptHash
         public static extern object WNeoContract(string method, object[] args);
 
         //超级管理员账户
-        //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe"); 
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p"); 
+        //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -132,7 +131,7 @@ namespace PNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-04-24 10:38:10";
+            var magicstr = "2018-05-09 10:38:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -195,12 +194,6 @@ namespace PNeoContract1
                     byte[] txid = (byte[])args[0];
                     return GetTXInfo(txid);
                 }
-                if (operation == "mintTokens")
-                {
-                    if (args.Length != 0) return 0;
-                    return MintTokens();
-                }
-
                 if (operation == "exWtoP")
                 {
                     if (args.Length != 2) return false;
@@ -306,44 +299,6 @@ namespace PNeoContract1
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             Storage.Put(Storage.CurrentContext, txid, txinfo);
-        }
-
-        public static bool MintTokens()
-        {
-            var tx = (Transaction)ExecutionEngine.ScriptContainer;
-
-            //获取投资人，谁要换gas
-            byte[] who = null;
-            TransactionOutput[] reference = tx.GetReferences();
-            for (var i = 0; i < reference.Length; i++)
-            {
-                if (reference[i].AssetId.AsBigInteger() == neo_asset_id.AsBigInteger())
-                {
-                    who = reference[i].ScriptHash;
-                    break;
-                }
-            }
-
-            TransactionOutput[] outputs = tx.GetOutputs();
-            ulong value = 0;
-            // get the total amount of Neo
-            // 获取转入智能合约地址的Gas总量
-            foreach (TransactionOutput output in outputs)
-            {
-                if (output.ScriptHash == ExecutionEngine.ExecutingScriptHash &&
-                    output.AssetId.AsBigInteger() == neo_asset_id.AsBigInteger())
-                {
-                    value += (ulong)output.Value;
-                }
-            }
-
-            //改变总量
-            var total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            total_supply += value;
-            Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
-
-            //1:1 不用换算
-            return Transfer(null, who, value);
         }
 
         public class TransferInfo
