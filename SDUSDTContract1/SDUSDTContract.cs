@@ -48,26 +48,8 @@ namespace SDUSDTContract1
 
         private const string TOTAL_SUPPLY = "totalSupply";
 
-        //交易类型-锁仓
-        private const string TRANSACTION_TYPE_LOCK = "1";
-
-        //交易类型-提取
-        private const string TRANSACTION_TYPE_DRAW = "2";
-
-        //交易类型-释放
-        private const string TRANSACTION_TYPE_FREE = "3";
-
-        //交易类型-赎回
-        private const string TRANSACTION_TYPE_WIPE = "4";
-
-        //交易类型-关闭
-        private const string TRANSACTION_TYPE_SHUT = "5";
-
-        //交易类型-对手关闭
-        private const string TRANSACTION_TYPE_FORCESHUT = "6";
-
         //配置参数-兑换比率，百分位，如150、200
-        private const string CONFIG_RATE = "rate";
+        private const string CONFIG_RATE = "neo_rate";
 
         //配置参数-NEO市场价格
         private const string CONFIG_PRICE_NEO = "neo_price";
@@ -75,6 +57,18 @@ namespace SDUSDTContract1
         //配置参数-GAS市场价格
         private const string CONFIG_PRICE_GAS = "gas_price";
 
+        //配置参数-清算比率，百分位，如50、90
+        private const string CONFIG_CLEAR_RATE = "clear_rate";
+
+        //交易类型
+        public enum ConfigTranType {
+            TRANSACTION_TYPE_LOCK = 1,//锁仓
+            TRANSACTION_TYPE_DRAW,//提取
+            TRANSACTION_TYPE_FREE,//释放
+            TRANSACTION_TYPE_WIPE,//赎回
+            TRANSACTION_TYPE_SHUT,//关闭
+            TRANSACTION_TYPE_FORCESHUT,//对手关闭
+        }
 
         public static byte Decimals()
         {
@@ -294,14 +288,65 @@ namespace SDUSDTContract1
                 //强制关闭在仓，由别人发起
                 if (operation == "forceShut")
                 {
-                    if (args.Length != 1) return false;
+                    if (args.Length != 2) return false;
                     byte[] otherAddr = (byte[])args[0];
                     byte[] addr = (byte[])args[1];
-
                     return ForceShut(otherAddr,addr);
+                }
+                //可赎回金额
+                if (operation == "balanceOfRedeem")
+                {
+                    if (args.Length != 1) return false;
+                    byte[] addr = (byte[])args[0];
+                    return balanceOfRedeem(addr);
+                }
+                //赎回剩余PNEO
+                if (operation == "redeem") {
+                    if (args.Length != 1) return false;
+                    byte[] addr = (byte[])args[0];
+                    return Redeem(addr);
                 }
             }
             return false;
+        }
+
+        public static bool operateTotalSupply(BigInteger mount)
+        {
+            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            if (current + mount > 0) {
+                Storage.Put(Storage.CurrentContext,TOTAL_SUPPLY, current + mount);
+            }
+            return true;
+        }
+
+        private static BigInteger balanceOfRedeem(byte[] addr)
+        {
+            //被清仓用户剩余PNEO所得
+            var otherKey = addr.Concat(ConvertN(1));
+            BigInteger currentRemain = Storage.Get(Storage.CurrentContext, otherKey).AsBigInteger();
+            if (currentRemain <= 0)
+            {
+                return 0;
+            }
+            return currentRemain;
+        }
+
+        private static bool Redeem(byte[] addr)
+        {
+            //被清仓用户剩余PNEO所得
+            var otherKey = addr.Concat(ConvertN(1));
+            BigInteger currentRemain = Storage.Get(Storage.CurrentContext, otherKey).AsBigInteger();
+            if (currentRemain <= 0)
+            {
+                return false;
+            }
+            //拿到该有的PNEO
+            if (!PNeoContract("increase", addr, currentRemain))
+            {
+                return false;
+            }
+            Storage.Delete(Storage.CurrentContext,otherKey);
+            return true;
         }
 
         private static CDPTransferDetail GetCdpTxInfo(byte[] txid)
@@ -333,17 +378,41 @@ namespace SDUSDTContract1
                 return false;
 
             CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
-            BigInteger locked = cdpInfo.locked;
+            BigInteger lockedPneo = cdpInfo.locked;
             BigInteger hasDrawed = cdpInfo.hasDrawed;
 
-            //返还所有PNEO
-            if (!PNeoContract("increase", addr, locked)) return false;
+            //不需要清算
+            if (hasDrawed <= 0) return false;
 
-            //to do ... 还需要转让剩余的pneo给对方
+            //当前清算折扣比例
+            BigInteger rateClear = GetConfig(CONFIG_CLEAR_RATE);
+            //当前兑换率，需要从配置中心获取
+            BigInteger rate = GetConfig(CONFIG_RATE);
+            //当前NEO美元价格，需要从价格中心获取
+            BigInteger neoPrice = GetConfig(CONFIG_PRICE_NEO);
 
-            //销毁SD
-            Transfer(addr, null, hasDrawed*9/10);
+            //计算可以拿到的pneo
+            BigInteger canClearPneo = hasDrawed * rate / (neoPrice * 100);
 
+            //销毁SDUSD
+            BigInteger clearMount = hasDrawed * rateClear / 100;
+            Transfer(addr, null, clearMount);
+            
+            //总量处理
+            operateTotalSupply(-clearMount);
+
+            //拿到该有的PNEO
+            if (!PNeoContract("increase", addr, canClearPneo)) return false;
+
+            //剩余的PNEO记录到原用户账户下
+            BigInteger remain = lockedPneo - canClearPneo;
+            if (remain > 0) {
+                //被清仓用户剩余PNEO所得
+                var otherKey = otherAddr.Concat(ConvertN(1));
+                BigInteger currentRemain = Storage.Get(Storage.CurrentContext,otherKey).AsBigInteger();
+                Storage.Put(Storage.CurrentContext, otherKey, currentRemain + remain);
+            }
+            //删除CDP记录
             Storage.Delete(Storage.CurrentContext, key);
 
             //记录交易详细数据
@@ -351,10 +420,11 @@ namespace SDUSDTContract1
             CDPTransferDetail detail = new CDPTransferDetail();
             detail.from = addr;
             detail.cdpTxid = cdpInfo.txid;
-            detail.type = TRANSACTION_TYPE_FORCESHUT;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_FORCESHUT;
             detail.locked = 0;
-            detail.hasLocked = locked;
+            detail.hasLocked = lockedPneo;
             detail.drawed = hasDrawed;
+
             Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
             return true;
         }
@@ -392,6 +462,8 @@ namespace SDUSDTContract1
 
             //先要销毁SD
             Transfer(addr, null, hasDrawed);
+            //减去总量
+            operateTotalSupply(-hasDrawed);
 
             Storage.Delete(Storage.CurrentContext,key);
 
@@ -400,7 +472,7 @@ namespace SDUSDTContract1
             CDPTransferDetail detail = new CDPTransferDetail();
             detail.from = addr;
             detail.cdpTxid = cdpInfo.txid;
-            detail.type = TRANSACTION_TYPE_SHUT;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_SHUT;
             detail.locked = 0;
             detail.hasLocked = locked;
             detail.drawed = hasDrawed;
@@ -429,6 +501,8 @@ namespace SDUSDTContract1
 
             //先要销毁SD
             Transfer(addr,null, wipeMount);
+            //操作总数，减去总量
+            operateTotalSupply(-wipeMount);
 
             cdpInfo.hasDrawed = hasDrawed - wipeMount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(cdpInfo));
@@ -439,7 +513,7 @@ namespace SDUSDTContract1
             CDPTransferDetail detail = new CDPTransferDetail();
             detail.from = addr;
             detail.cdpTxid = cdpInfo.txid;
-            detail.type = TRANSACTION_TYPE_WIPE;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_WIPE;
             detail.locked = 0;
             detail.hasLocked = locked;
             detail.drawed = wipeMount;
@@ -497,7 +571,7 @@ namespace SDUSDTContract1
             CDPTransferDetail detail = new CDPTransferDetail();
             detail.from = addr;
             detail.cdpTxid = cdpInfo.txid;
-            detail.type = TRANSACTION_TYPE_FREE;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_FREE;
             detail.locked = freeMount;
             detail.hasLocked = locked - freeMount;
             detail.drawed = 0;
@@ -557,7 +631,7 @@ namespace SDUSDTContract1
             CDPTransferDetail detail = new CDPTransferDetail();
             detail.from = addr;
             detail.cdpTxid = cdpInfo.txid;
-            detail.type = TRANSACTION_TYPE_LOCK;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_LOCK;
             detail.locked = lockMount;
             detail.hasLocked = currLock;
             detail.drawed = 0;
@@ -595,6 +669,8 @@ namespace SDUSDTContract1
             if (allSd < hasDrawed + drawMount) return false;
 
             Transfer(null, addr, drawMount);
+            //增加总数
+            operateTotalSupply(drawMount);
 
             //设置已经获取量
             cdpInfo.hasDrawed = hasDrawed + drawMount;
@@ -605,7 +681,7 @@ namespace SDUSDTContract1
             CDPTransferDetail detail = new CDPTransferDetail();
             detail.from = addr;
             detail.cdpTxid = cdpInfo.txid;
-            detail.type = TRANSACTION_TYPE_DRAW;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_DRAW;
             detail.locked = 0;
             detail.hasLocked = locked;
             detail.drawed = drawMount;
@@ -753,7 +829,7 @@ namespace SDUSDTContract1
             public BigInteger drawed;
 
             //操作类型
-            public string type;
+            public int type;
         }
 
         /// <summary>

@@ -249,9 +249,20 @@ namespace PNeoContract1
                     BigInteger value = (BigInteger)args[1];
                     return Increase(addr, value);
                 }
+                
 
             }
             return false;
+        }
+
+        public static bool operateTotalSupply(BigInteger mount)
+        {
+            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            if (current + mount > 0)
+            {
+                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current + mount);
+            }
+            return true;
         }
 
         public static TransferInfo GetTXInfo(byte[] txid)
@@ -448,9 +459,7 @@ namespace PNeoContract1
 
             Transfer(null, to, value);
 
-            BigInteger total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            total_supply += value;
-            Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
+            operateTotalSupply(value);
             return true;
         }
 
@@ -462,9 +471,7 @@ namespace PNeoContract1
 
             Transfer(from, null, value);
 
-            BigInteger total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            total_supply -= value;
-            Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
+            operateTotalSupply(-value);
             return true;
         }
 

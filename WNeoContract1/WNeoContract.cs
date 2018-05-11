@@ -349,9 +349,7 @@ namespace WNeoContract1
             byte[] coinid = tx.Hash.Concat(new byte[] { 0, 0 });
             Storage.Put(Storage.CurrentContext,coinid, who);
             //改变总量
-            var total_supply = Storage.Get(Storage.CurrentContext,TOTAL_SUPPLY).AsBigInteger();
-            total_supply -= count;
-            Storage.Put(Storage.CurrentContext,TOTAL_SUPPLY, total_supply);
+            operateTotalSupply(-count);
             return true;
         }
 
@@ -421,9 +419,7 @@ namespace WNeoContract1
             BigInteger realValue = getRealValue(type,value);
 
             //改变总量
-            var total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            total_supply += realValue;
-            Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
+            operateTotalSupply(realValue);
             return Transfer(null, who, realValue);
         }
 
@@ -439,6 +435,16 @@ namespace WNeoContract1
                 return value * (gasPrice/neoPrice);
             }
             return value;
+        }
+
+        public static bool operateTotalSupply(BigInteger mount)
+        {
+            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            if (current + mount > 0)
+            {
+                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current + mount);
+            }
+            return true;
         }
 
         public class TransferInfo
@@ -589,9 +595,7 @@ namespace WNeoContract1
 
             Transfer(null, to, value);
 
-            BigInteger total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            total_supply += value;
-            Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
+            operateTotalSupply(value);
             return true;
         }
 
@@ -602,10 +606,7 @@ namespace WNeoContract1
             if (!Runtime.CheckWitness(from)) return false;
 
             Transfer(from, null, value);
-
-            BigInteger total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            total_supply -= value;
-            Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
+            operateTotalSupply(-value);
             return true;
         }
 
