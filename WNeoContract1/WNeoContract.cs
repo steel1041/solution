@@ -20,9 +20,6 @@ namespace WNeoContract1
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
-        [DisplayName("refund")]
-        public static event Action<byte[], byte[], BigInteger> Refunded;
-
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
 
@@ -606,7 +603,7 @@ namespace WNeoContract1
             if (!Runtime.CheckWitness(from)) return false;
 
             Transfer(from, null, value);
-            operateTotalSupply(-value);
+            operateTotalSupply(0-value);
             return true;
         }
 

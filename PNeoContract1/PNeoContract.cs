@@ -16,13 +16,10 @@ namespace PNeoContract1
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
-        [DisplayName("refund")]
-        public static event Action<byte[], byte[], BigInteger> Refunded;
-
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
          
-        [Appcall("6c03e7b21cacc759d00f8a83219cba6fe4cebfa1")] //ScriptHash
+        [Appcall("682213fc38e6e78b49bb0d543da3b26194087974")] //ScriptHash
         public static extern object WNeoContract(string method, object[] args);
 
         //超级管理员账户
@@ -131,7 +128,7 @@ namespace PNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-09 10:38:10";
+            var magicstr = "2018-05-14 10:38:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -471,7 +468,7 @@ namespace PNeoContract1
 
             Transfer(from, null, value);
 
-            operateTotalSupply(-value);
+            operateTotalSupply(0-value);
             return true;
         }
 

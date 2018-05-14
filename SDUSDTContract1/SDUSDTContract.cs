@@ -24,7 +24,7 @@ namespace SDUSDTContract1
         private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p");
 
         //调用PNeo合约
-        [Appcall("1e003cdc725c7b4113f0c608f8f44cdcbfde0411")]
+        [Appcall("dcb83295dd5db007107e30722990d612373bc6ab")]
         public static extern Boolean PNeoContract(string operation, params object[] args);
 
         //nep5 func
@@ -68,6 +68,7 @@ namespace SDUSDTContract1
             TRANSACTION_TYPE_WIPE,//赎回
             TRANSACTION_TYPE_SHUT,//关闭
             TRANSACTION_TYPE_FORCESHUT,//对手关闭
+            TRANSACTION_TYPE_GIVE,//转移所有权
         }
 
         public static byte Decimals()
@@ -151,7 +152,7 @@ namespace SDUSDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-09 15:40:10";
+            var magicstr = "2018-05-14 15:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -306,8 +307,47 @@ namespace SDUSDTContract1
                     byte[] addr = (byte[])args[0];
                     return Redeem(addr);
                 }
+                //转移CDP所有权给其它地址
+                if (operation == "give") {
+                    if (args.Length != 2) return false;
+                    byte[] fromAdd  = (byte[])args[0];
+                    byte[] toAdd = (byte[])args[1];
+                    return Give(fromAdd,toAdd);
+                }
             }
             return false;
+        }
+
+        private static bool Give(byte[] fromAdd, byte[] toAdd)
+        {
+            if (!Runtime.CheckWitness(fromAdd)) return false;
+            //CDP是否存在
+            CDPTransferInfo fromCDP = GetCdp(fromAdd);
+            if (fromCDP == null) return false;
+
+            CDPTransferInfo toCDP = GetCdp(toAdd);
+            if (toAdd != null) return false;
+            //删除原来的CDP
+            Storage.Delete(Storage.CurrentContext, fromAdd.Concat(ConvertN(0)));
+
+            //设置新的CDP
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            fromCDP.from = toAdd;
+            fromCDP.txid = txid;
+            Storage.Put(Storage.CurrentContext, toAdd.Concat(ConvertN(0)), Helper.Serialize(fromCDP));
+
+            //记录操作信息
+            CDPTransferDetail detail = new CDPTransferDetail();
+            detail.from = toAdd;
+            detail.cdpTxid = txid;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_GIVE;
+            detail.locked = 0;
+            detail.hasLocked = fromCDP.locked;
+            detail.drawed = 0;
+            detail.txid = txid;
+
+            Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
+            return true;
         }
 
         public static bool operateTotalSupply(BigInteger mount)
@@ -399,7 +439,7 @@ namespace SDUSDTContract1
             Transfer(addr, null, clearMount);
             
             //总量处理
-            operateTotalSupply(-clearMount);
+            operateTotalSupply(0-clearMount);
 
             //拿到该有的PNEO
             if (!PNeoContract("increase", addr, canClearPneo)) return false;
@@ -438,6 +478,7 @@ namespace SDUSDTContract1
         private static Boolean SetConfig(string key, BigInteger value)
         {
             if (key == null || key == "") return false;
+            //只允许超管操作
             if (!Runtime.CheckWitness(SuperAdmin)) return false;
 
             Storage.Put(Storage.CurrentContext,key.AsByteArray(),value);
@@ -456,14 +497,19 @@ namespace SDUSDTContract1
             CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
             BigInteger locked = cdpInfo.locked;
             BigInteger hasDrawed = cdpInfo.hasDrawed;
+            if (locked > 0)
+            {
+                //增发PNEO
+                if (!PNeoContract("increase", addr, locked)) return false;
+            }
 
-            //增发PNEO
-            if (!PNeoContract("increase", addr, locked)) return false;
-
-            //先要销毁SD
-            Transfer(addr, null, hasDrawed);
-            //减去总量
-            operateTotalSupply(-hasDrawed);
+            if (hasDrawed > 0)
+            {
+                //先要销毁SD
+                Transfer(addr, null, hasDrawed);
+                //减去总量
+                operateTotalSupply(0 - hasDrawed);
+            }
 
             Storage.Delete(Storage.CurrentContext,key);
 
@@ -502,7 +548,7 @@ namespace SDUSDTContract1
             //先要销毁SD
             Transfer(addr,null, wipeMount);
             //操作总数，减去总量
-            operateTotalSupply(-wipeMount);
+            operateTotalSupply(0-wipeMount);
 
             cdpInfo.hasDrawed = hasDrawed - wipeMount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(cdpInfo));
