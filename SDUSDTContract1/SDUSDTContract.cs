@@ -287,12 +287,12 @@ namespace SDUSDTContract1
                     return Shut(addr);
                 }
                 //强制关闭在仓，由别人发起
-                if (operation == "forceShut")
+                if (operation == "bite")
                 {
                     if (args.Length != 2) return false;
                     byte[] otherAddr = (byte[])args[0];
                     byte[] addr = (byte[])args[1];
-                    return ForceShut(otherAddr,addr);
+                    return Bite(otherAddr,addr);
                 }
                 //可赎回金额
                 if (operation == "balanceOfRedeem")
@@ -414,7 +414,7 @@ namespace SDUSDTContract1
             return cdpInfo;
         }
 
-        private static Boolean ForceShut(byte[] otherAddr, byte[] addr)
+        private static Boolean Bite(byte[] otherAddr, byte[] addr)
         {
             if (!Runtime.CheckWitness(addr)) return false;
             //CDP是否存在
@@ -471,7 +471,7 @@ namespace SDUSDTContract1
             detail.operated = hasDrawed;
             detail.hasLocked = lockedPneo;
             detail.hasDrawed = hasDrawed;
-
+            detail.txid = txid;
             Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
             return true;
         }
@@ -526,6 +526,7 @@ namespace SDUSDTContract1
             CDPTransferDetail detail = new CDPTransferDetail();
             detail.from = addr;
             detail.cdpTxid = cdpInfo.txid;
+            detail.txid = txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_SHUT;
             detail.operated = hasDrawed;
             detail.hasLocked = locked;
@@ -568,6 +569,7 @@ namespace SDUSDTContract1
             CDPTransferDetail detail = new CDPTransferDetail();
             detail.from = addr;
             detail.cdpTxid = cdpInfo.txid;
+            detail.txid = txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_WIPE;
             detail.operated = wipeMount;
             detail.hasLocked = locked;
@@ -627,6 +629,7 @@ namespace SDUSDTContract1
             CDPTransferDetail detail = new CDPTransferDetail();
             detail.from = addr;
             detail.cdpTxid = cdpInfo.txid;
+            detail.txid = txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_FREE;
             detail.operated = freeMount;
             detail.hasLocked = locked - freeMount;
@@ -736,10 +739,12 @@ namespace SDUSDTContract1
             CDPTransferDetail detail = new CDPTransferDetail();
             detail.from = addr;
             detail.cdpTxid = cdpInfo.txid;
+            detail.txid = txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_DRAW;
             detail.operated = drawMount;
             detail.hasLocked = locked;
             detail.hasDrawed = hasDrawed;
+            
             Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
             return true;
 
