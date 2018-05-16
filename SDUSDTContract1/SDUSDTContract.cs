@@ -152,7 +152,7 @@ namespace SDUSDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-16 09:40:10";
+            var magicstr = "2018-05-16 18:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -322,19 +322,25 @@ namespace SDUSDTContract1
         {
             if (!Runtime.CheckWitness(fromAdd)) return false;
             //CDP是否存在
-            CDPTransferInfo fromCDP = GetCdp(fromAdd);
-            if (fromCDP == null) return false;
+            var keyFrom = fromAdd.Concat(ConvertN(0));
+            byte[] cdp = Storage.Get(Storage.CurrentContext, keyFrom);
+            if (cdp.Length == 0)
+                return false;
+            CDPTransferInfo fromCDP = (CDPTransferInfo)Helper.Deserialize(cdp);
 
-            CDPTransferInfo toCDP = GetCdp(toAdd);
-            if (toAdd != null) return false;
+            var keyTo = toAdd.Concat(ConvertN(0));
+            byte[] cdpTo = Storage.Get(Storage.CurrentContext, keyTo);
+            if (cdpTo.Length > 0)
+                return false;
+
             //删除原来的CDP
-            Storage.Delete(Storage.CurrentContext, fromAdd.Concat(ConvertN(0)));
+            Storage.Delete(Storage.CurrentContext, keyFrom);
 
             //设置新的CDP
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             fromCDP.from = toAdd;
             fromCDP.txid = txid;
-            Storage.Put(Storage.CurrentContext, toAdd.Concat(ConvertN(0)), Helper.Serialize(fromCDP));
+            Storage.Put(Storage.CurrentContext, keyTo, Helper.Serialize(fromCDP));
 
             //记录操作信息
             CDPTransferDetail detail = new CDPTransferDetail();
@@ -414,8 +420,10 @@ namespace SDUSDTContract1
             //CDP是否存在
             var key = otherAddr.Concat(ConvertN(0));
 
-            CDPTransferInfo cdpInfo = GetCdp(otherAddr);
-            if (cdpInfo == null) return false;
+            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
+            if (cdp.Length == 0)
+                return false;
+            CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
 
             BigInteger lockedPneo = cdpInfo.locked;
             BigInteger hasDrawed = cdpInfo.hasDrawed;
@@ -490,8 +498,10 @@ namespace SDUSDTContract1
             //CDP是否存在
             var key = addr.Concat(ConvertN(0));
 
-            CDPTransferInfo cdpInfo = GetCdp(addr);
-            if (cdpInfo == null) return false;
+            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
+            if (cdp.Length == 0)
+                return false;
+            CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
 
             BigInteger locked = cdpInfo.locked;
             BigInteger hasDrawed = cdpInfo.hasDrawed;
@@ -533,8 +543,10 @@ namespace SDUSDTContract1
             //CDP是否存在
             var key = addr.Concat(ConvertN(0));
 
-            CDPTransferInfo cdpInfo = GetCdp(addr);
-            if (cdpInfo == null) return false;
+            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
+            if (cdp.Length == 0)
+                return false;
+            CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
 
             BigInteger locked = cdpInfo.locked;
             BigInteger hasDrawed = cdpInfo.hasDrawed;
@@ -584,8 +596,10 @@ namespace SDUSDTContract1
             //CDP是否存在
             var key = addr.Concat(ConvertN(0));
 
-            CDPTransferInfo cdpInfo = GetCdp(addr);
-            if (cdpInfo == null) return false;
+            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
+            if (cdp.Length == 0)
+                return false;
+            CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
 
             BigInteger locked = cdpInfo.locked;
             BigInteger hasDrawed = cdpInfo.hasDrawed;
@@ -652,12 +666,14 @@ namespace SDUSDTContract1
 
             //CDP是否存在
             var key = addr.Concat(ConvertN(0));
-          
-            CDPTransferInfo cdpInfo = GetCdp(addr);
-            if (cdpInfo == null) return false;
+
+            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
+            if (cdp.Length == 0)
+                return false;
+            CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
 
             //销毁PNeo
-            if(!PNeoContract("destory",addr,lockMount))return false;
+            if (!PNeoContract("destory",addr,lockMount))return false;
 
             //设置锁仓的数量
             BigInteger currLock = cdpInfo.locked;
@@ -688,8 +704,10 @@ namespace SDUSDTContract1
             //CDP是否存在
             var key = addr.Concat(ConvertN(0));
 
-            CDPTransferInfo cdpInfo = GetCdp(addr);
-            if (cdpInfo == null) return false;
+            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
+            if (cdp.Length == 0)
+                return false;
+            CDPTransferInfo cdpInfo = (CDPTransferInfo)Helper.Deserialize(cdp);
 
             BigInteger locked = cdpInfo.locked;
             BigInteger hasDrawed = cdpInfo.hasDrawed;
