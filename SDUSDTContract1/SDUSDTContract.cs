@@ -34,11 +34,11 @@ namespace SDUSDTContract1
         }
         public static string Name()
         {
-            return "SD USDT2";
+            return "SD USD";
         }
         public static string Symbol()
         {
-            return "SDUSDT";
+            return "SDUSD";
         }
         //因子
         private const ulong factor = 100000000;
@@ -57,7 +57,7 @@ namespace SDUSDTContract1
         //配置参数-GAS市场价格
         private const string CONFIG_PRICE_GAS = "gas_price";
 
-        //配置参数-清算比率，百分位，如50、90
+        //配置参数-清算比率，百分位，如110
         private const string CONFIG_CLEAR_RATE = "clear_rate";
 
         //交易类型
@@ -152,7 +152,7 @@ namespace SDUSDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-16 18:40:10";
+            var magicstr = "2018-05-17 16:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -379,6 +379,8 @@ namespace SDUSDTContract1
 
         private static bool Redeem(byte[] addr)
         {
+            if (!Runtime.CheckWitness(addr)) return false;
+
             //被清仓用户剩余PNEO所得
             var otherKey = addr.Concat(ConvertN(1));
             BigInteger currentRemain = Storage.Get(Storage.CurrentContext, otherKey).AsBigInteger();
@@ -431,6 +433,10 @@ namespace SDUSDTContract1
             //不需要清算
             if (hasDrawed <= 0) return false;
 
+            //余额SDUSD是否足够
+            BigInteger myBalance = BalanceOf(addr);
+            if (hasDrawed > myBalance) return false;
+
             //当前清算折扣比例
             BigInteger rateClear = GetConfig(CONFIG_CLEAR_RATE);
             //当前兑换率，需要从配置中心获取
@@ -439,29 +445,31 @@ namespace SDUSDTContract1
             BigInteger neoPrice = GetConfig(CONFIG_PRICE_NEO);
 
             //计算可以拿到的pneo
-            BigInteger canClearPneo = hasDrawed * rate / (neoPrice * 100);
+            BigInteger canClearPneo = hasDrawed * rateClear / (neoPrice * 100);
 
-            //销毁SDUSD
-            BigInteger clearMount = hasDrawed * rateClear / 100;
-            Transfer(addr, null, clearMount);
+            //剩余的PNEO记录到原用户账户下
+            BigInteger remain = lockedPneo - canClearPneo;
+            if (remain < 0) return false;
+
+            //销毁等量SDUSD
+            Transfer(addr, null, hasDrawed);
             
             //总量处理
-            operateTotalSupply(0-clearMount);
+            operateTotalSupply(0 - hasDrawed);
 
             //拿到该有的PNEO
             if (!PNeoContract("increase", addr, canClearPneo)) return false;
 
-            //剩余的PNEO记录到原用户账户下
-            BigInteger remain = lockedPneo - canClearPneo;
+            //删除CDP记录
+            Storage.Delete(Storage.CurrentContext, key);
+
             if (remain > 0) {
                 //被清仓用户剩余PNEO所得
                 var otherKey = otherAddr.Concat(ConvertN(1));
                 BigInteger currentRemain = Storage.Get(Storage.CurrentContext,otherKey).AsBigInteger();
                 Storage.Put(Storage.CurrentContext, otherKey, currentRemain + remain);
             }
-            //删除CDP记录
-            Storage.Delete(Storage.CurrentContext, key);
-
+           
             //记录交易详细数据
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             CDPTransferDetail detail = new CDPTransferDetail();
@@ -505,6 +513,11 @@ namespace SDUSDTContract1
 
             BigInteger locked = cdpInfo.locked;
             BigInteger hasDrawed = cdpInfo.hasDrawed;
+            
+            //当前余额必须要大于负债
+            BigInteger balance = BalanceOf(addr);
+            if (hasDrawed > balance) return false;
+
             if (locked > 0)
             {
                 //增发PNEO
