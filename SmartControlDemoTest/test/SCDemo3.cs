@@ -24,8 +24,7 @@ namespace smartContractDemo
 
             //获取地址的资产列表
             Dictionary<string, List<Utxo>> dir = await Helper.GetBalanceByAddress(api,address);
-
-
+            
             string targeraddr = address;  //Transfer it to yourself. 
             ThinNeo.Transaction tran = Helper.makeTran(dir[id_GAS], targeraddr, new ThinNeo.Hash256(id_GAS), decimal.Zero);
             tran.type = ThinNeo.TransactionType.InvocationTransaction;

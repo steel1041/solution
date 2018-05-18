@@ -19,12 +19,14 @@ namespace PNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
          
-        [Appcall("682213fc38e6e78b49bb0d543da3b26194087974")] //ScriptHash
+        [Appcall("cb91403e11de7314f3a98805b5a05d0abddfda3f")] //WNeo ScriptHash
         public static extern object WNeoContract(string method, object[] args);
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p"); 
-        //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn");
+        // private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p");
+
+        static readonly byte[] jumpContract = Helper.ToScriptHash("AJTCnzAkMETzxLDmhNgxdJkUUJzXpT1Jhy");    //PNeoJumpContract address
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -127,18 +129,19 @@ namespace PNeoContract1
         ///     Return Object
         /// </returns>
         public static Object Main(string operation, params object[] args)
-        {
-            var magicstr = "2018-05-14 10:38:10";
+        { 
+            //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了  
+            var callscript = ExecutionEngine.CallingScriptHash;
+
+            var magicstr = "2018-05-18 17:38:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
                 return Runtime.CheckWitness(SuperAdmin);
-                
             }
+
             else if (Runtime.Trigger == TriggerType.Application)
             {
-                //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了
-                var callscript = ExecutionEngine.CallingScriptHash;
                 //this is in nep5
                 if (operation == "totalSupply") return TotalSupply();
                 if (operation == "name") return Name();
@@ -191,7 +194,9 @@ namespace PNeoContract1
                     byte[] txid = (byte[])args[0];
                     return GetTXInfo(txid);
                 }
-                if (operation == "exWtoP")
+
+                //WNeo换成PNeo(动态调用WNeo)
+                if (operation == "WNeoToPNeo")
                 {
                     if (args.Length != 2) return false;
 
@@ -201,31 +206,34 @@ namespace PNeoContract1
                     
                     BigInteger value = (BigInteger)args[1];
                     
-                    if (!(bool)WNeoContract("WNeoToPNeo", args)) return false;
+                    if (!(bool)WNeoContract(operation, args)) return false;
 
                     return Increase(addr, value);
                 }
+                
+                //PNeo换WNeo(被跳板合约调用)
+                if (operation == "PNeoToWNeo")
+                { 
+                    if (callscript.AsBigInteger() == jumpContract.AsBigInteger()) {
 
-                if (operation == "exPtoW")
-                {
-                    if (args.Length != 2) return false;
+                        if (args.Length != 2) return false;
 
-                    byte[] addr = (byte[])args[0];
+                        byte[] addr = (byte[])args[0];
+                        BigInteger value = (BigInteger)args[1];
 
-                    if (!Runtime.CheckWitness(addr)) return false;
+                        if (!Runtime.CheckWitness(addr)) return false;
+                          
+                        /*查询PNeo余额*/
+                        BigInteger balance = BalanceOf(addr);
 
-                    BigInteger value = (BigInteger)args[1];
+                        if (balance < value) return false;
+                        
+                        return Destory(addr, value);
+                   }
 
-                    /*查询PNeo余额*/ 
-                    BigInteger balance = BalanceOf(addr);
-
-                    if (balance < value) return false;
-
-                    if (!(bool)WNeoContract("PNeoToWNeo", args)) return false;
-
-                    return Destory(addr, value);
+                    return false;
                 }
-
+                
                 //销毁代币，直接方法，风险极高
                 if (operation == "destory")
                 {

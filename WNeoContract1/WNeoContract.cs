@@ -23,6 +23,9 @@ namespace WNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
 
+        [Appcall("53f176e84fc74bc30c34b12ea64accaeb7fff476")] //PNeoContract_jump ScriptHash
+        public static extern object PNeoJumpContract(string method, object[] args);
+
         //配置参数-NEO市场价格
         private const string CONFIG_PRICE_NEO = "neo_price";
 
@@ -30,8 +33,8 @@ namespace WNeoContract1
         private const string CONFIG_PRICE_GAS = "gas_price";
 
         //超级管理员账户
-        //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AHBL6ojH9Tb5U7VCWuGrNjHBGQPfjd33Xe"); 
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p"); 
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn"); 
+        //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p"); 
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -286,6 +289,8 @@ namespace WNeoContract1
                     string type = (string)args[0];
                     return MintTokens(type);
                 }
+
+                //WNeo换成PNeo(被PNeo动态调用)
                 if (operation == "WNeoToPNeo")
                 { 
                     if (args.Length != 2) return false;
@@ -301,16 +306,19 @@ namespace WNeoContract1
                     return  Destory(addr, value); 
                 }
 
+                //PNeo兑换WNeo
                 if (operation == "PNeoToWNeo")
                 { 
                     if (args.Length != 2) return false;
 
                     byte[] addr = (byte[])args[0];
+                    BigInteger value = (BigInteger)args[1];
 
                     if (!Runtime.CheckWitness(addr)) return false;
                      
-                    BigInteger value = (BigInteger)args[1];
-
+                    //通过跳板合约调用PNeo
+                    if (!(bool)PNeoJumpContract(operation, args)) return false;
+                    
                     return Increase(addr, value);
                 }
 

@@ -78,13 +78,11 @@ namespace smartContractDemo
                     return;
                 }
             }
-
-
+            
             ThinNeo.Transaction tran = Helper.makeTran(newlist, address, new ThinNeo.Hash256(Nep55_1.id_GAS), newlist[0].value);
             tran.type = ThinNeo.TransactionType.ContractTransaction;
             tran.version = 0;
-
-
+            
             //sign and broadcast
             {//做智能合约的签名
                 byte[] n55contract = null;
