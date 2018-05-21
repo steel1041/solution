@@ -257,7 +257,7 @@ namespace PNeoContract1
         public static bool operateTotalSupply(BigInteger mount)
         {
             BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
-            if (current + mount > 0)
+            if (current + mount >= 0)
             {
                 Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current + mount);
             }
