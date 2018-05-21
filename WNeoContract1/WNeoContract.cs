@@ -23,8 +23,8 @@ namespace WNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
 
-        [Appcall("53f176e84fc74bc30c34b12ea64accaeb7fff476")] //PNeoContract_jump ScriptHash
-        public static extern object PNeoJumpContract(string method, object[] args);
+        [Appcall("cd85b19e665412c9c85d1631d836abf02a3d8487")] //JumpCenter ScriptHash
+        public static extern object JumpCenterContract(string method, object[] args);
 
         //配置参数-NEO市场价格
         private const string CONFIG_PRICE_NEO = "neo_price";
@@ -33,7 +33,7 @@ namespace WNeoContract1
         private const string CONFIG_PRICE_GAS = "gas_price";
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn"); 
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7"); 
         //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p"); 
 
         //nep5 func
@@ -317,7 +317,7 @@ namespace WNeoContract1
                     if (!Runtime.CheckWitness(addr)) return false;
                      
                     //通过跳板合约调用PNeo
-                    if (!(bool)PNeoJumpContract(operation, args)) return false;
+                    if (!(bool)JumpCenterContract(operation, args)) return false;
                     
                     return Increase(addr, value);
                 }

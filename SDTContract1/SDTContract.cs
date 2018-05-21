@@ -23,7 +23,8 @@ namespace SDTContract1
         public static event Action<byte[], byte[], BigInteger> Approved;
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p");
+        //testnet账户  AaBmSJ4Beeg2AeKczpXk89DnmVrPn3SHkU
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AaBmSJ4Beeg2AeKczpXk89DnmVrPn3SHkU");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -32,7 +33,7 @@ namespace SDTContract1
         }
         public static string Name()
         {
-            return "Special Drawing Token4";
+            return "Special Drawing Token";
         }
         public static string Symbol()
         {
@@ -127,7 +128,7 @@ namespace SDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-04 18:30:10";
+            var magicstr = "2018-05-21 11:30:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -200,11 +201,6 @@ namespace SDTContract1
                     byte[] txid = (byte[])args[0];
                     return GetTXInfo(txid);
                 }
-                if (operation == "mintTokens")
-                {
-                    //if (args.Length != 0) return 0;
-                    //return MintTokens();
-                }
             }
             return false;
         }
@@ -216,23 +212,23 @@ namespace SDTContract1
                 return null;
 
             //老式实现方法
-            //TransferInfo info = new TransferInfo();
-            //int seek = 0;
-            //var fromlen = (int)v.Range(seek, 2).AsBigInteger();
-            //seek += 2;
-            //info.from = v.Range(seek, fromlen);
-            //seek += fromlen;
-            //var tolen = (int)v.Range(seek, 2).AsBigInteger();
-            //seek += 2;
-            //info.to = v.Range(seek, tolen);
-            //seek += tolen;
-            //var valuelen = (int)v.Range(seek, 2).AsBigInteger();
-            //seek += 2;
-            //info.value = v.Range(seek, valuelen).AsBigInteger();
-            //return info;
+            TransferInfo info = new TransferInfo();
+            int seek = 0;
+            var fromlen = (int)v.Range(seek, 2).AsBigInteger();
+            seek += 2;
+            info.from = v.Range(seek, fromlen);
+            seek += fromlen;
+            var tolen = (int)v.Range(seek, 2).AsBigInteger();
+            seek += 2;
+            info.to = v.Range(seek, tolen);
+            seek += tolen;
+            var valuelen = (int)v.Range(seek, 2).AsBigInteger();
+            seek += 2;
+            info.value = v.Range(seek, valuelen).AsBigInteger();
+            return info;
 
             //新式实现方法只要一行
-            return (TransferInfo)Helper.Deserialize(v);
+            //return (TransferInfo)Helper.Deserialize(v);
         }
 
         private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
@@ -247,22 +243,21 @@ namespace SDTContract1
             //用一个老式实现法
 
             //优化的拼包方法
-
-            //var data = info.from;
-            //var lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
+            var data = info.from;
+            var lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
             ////lendata是数据长度得bytearray，因为bigint长度不固定，统一加两个零，然后只取前面两个字节
             ////为什么要两个字节，因为bigint是含有符号位得，统一加个零安全，要不然长度129取一个字节就是负数了
-            //var txinfo = lendata.Concat(data);
+            var txinfo = lendata.Concat(data);
 
-            //data = info.to;
-            //lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
-            //txinfo = txinfo.Concat(lendata).Concat(data);
+            data = info.to;
+            lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
+            txinfo = txinfo.Concat(lendata).Concat(data);
 
-            //data = value.AsByteArray();
-            //lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
-            //txinfo = txinfo.Concat(lendata).Concat(data);
+            data = value.AsByteArray();
+            lendata = ((BigInteger)data.Length).AsByteArray().Concat(doublezero).Range(0, 2);
+            txinfo = txinfo.Concat(lendata).Concat(data);
             //新式实现方法只要一行
-            byte[] txinfo = Helper.Serialize(info);
+            //byte[] txinfo = Helper.Serialize(info);
 
             var txid = (ExecutionEngine.ScriptContainer as Transaction).Hash;
             Storage.Put(Storage.CurrentContext, txid, txinfo);
@@ -271,43 +266,7 @@ namespace SDTContract1
         //把doublezero定义出来就好了，...... 要查编译器了
         static readonly byte[] doublezero = new byte[2] { 0x00, 0x00 };
 
-        public static bool MintTokens()
-        {
-            var tx = (Transaction)ExecutionEngine.ScriptContainer;
-
-            //获取投资人，谁要换gas
-            byte[] who = null;
-            TransactionOutput[] reference = tx.GetReferences();
-            for (var i = 0; i < reference.Length; i++)
-            {
-                if (reference[i].AssetId.AsBigInteger() == neo_asset_id.AsBigInteger())
-                {
-                    who = reference[i].ScriptHash;
-                    break;
-                }
-            }
-
-            TransactionOutput[] outputs = tx.GetOutputs();
-            ulong value = 0;
-            // get the total amount of Neo
-            // 获取转入智能合约地址的Gas总量
-            foreach (TransactionOutput output in outputs)
-            {
-                if (output.ScriptHash == ExecutionEngine.ExecutingScriptHash &&
-                    output.AssetId.AsBigInteger() == neo_asset_id.AsBigInteger())
-                {
-                    value += (ulong)output.Value;
-                }
-            }
-
-            //改变总量
-            var total_supply = Storage.Get(Storage.CurrentContext, "totalSupply").AsBigInteger();
-            total_supply += value;
-            Storage.Put(Storage.CurrentContext, "totalSupply", total_supply);
-
-            //1:1 不用换算
-            return Transfer(null, who, value);
-        }
+      
 
         public class TransferInfo
         {

@@ -19,14 +19,14 @@ namespace PNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
          
-        [Appcall("cb91403e11de7314f3a98805b5a05d0abddfda3f")] //WNeo ScriptHash
-        public static extern object WNeoContract(string method, object[] args);
+        [Appcall("cd85b19e665412c9c85d1631d836abf02a3d8487")] //JumpCenter ScriptHash
+        public static extern object JumpCenterContract(string method, object[] args);
 
         //超级管理员账户
-        // private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
-        static readonly byte[] jumpContract = Helper.ToScriptHash("AJTCnzAkMETzxLDmhNgxdJkUUJzXpT1Jhy");    //PNeoJumpContract address
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn");
+        //static readonly byte[] jumpContract = Helper.ToScriptHash("AJTCnzAkMETzxLDmhNgxdJkUUJzXpT1Jhy");    //PNeoJumpContract address
+        //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -206,15 +206,15 @@ namespace PNeoContract1
                     
                     BigInteger value = (BigInteger)args[1];
                     
-                    if (!(bool)WNeoContract(operation, args)) return false;
+                    if (!(bool)JumpCenterContract(operation, args)) return false;
 
                     return Increase(addr, value);
                 }
                 
-                //PNeo换WNeo(被跳板合约调用)
+                //P兑换成W，先销毁P
                 if (operation == "PNeoToWNeo")
                 { 
-                    if (callscript.AsBigInteger() == jumpContract.AsBigInteger()) {
+                    //if (callscript.AsBigInteger() == jumpContract.AsBigInteger()) {
 
                         if (args.Length != 2) return false;
 
@@ -222,16 +222,10 @@ namespace PNeoContract1
                         BigInteger value = (BigInteger)args[1];
 
                         if (!Runtime.CheckWitness(addr)) return false;
-                          
-                        /*查询PNeo余额*/
-                        BigInteger balance = BalanceOf(addr);
-
-                        if (balance < value) return false;
-                        
                         return Destory(addr, value);
-                   }
+                  // }
 
-                    return false;
+                    //return false;
                 }
                 
                 //销毁代币，直接方法，风险极高
