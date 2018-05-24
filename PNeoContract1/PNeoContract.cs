@@ -136,7 +136,7 @@ namespace PNeoContract1
             //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了  
             var callscript = ExecutionEngine.CallingScriptHash;
 
-            var magicstr = "2018-05-23 14:38:10";
+            var magicstr = "2018-05-24 14:38:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -504,13 +504,6 @@ namespace PNeoContract1
         {
             if (value <= 0) return false;
 
-            //查询SD合约是否有相应的值
-            //object[] param = new object[1];
-            //param[0] = txid;
-
-            //var currentMount = (BigInteger)JumpCenterContract("currentMountBySD",param);
-            //if (currentMount != value) return false;
-
             Transfer(null, to, value);
 
             operateTotalSupply(value);
@@ -550,14 +543,7 @@ namespace PNeoContract1
             if (value <= 0) return false;
             if (!Runtime.CheckWitness(from)) return false;
 
-            object[] param = new object[1];
-            param[0] = txid;
-            //查询W合约
-            var currentMount = (BigInteger)JumpCenterContract("currentMountByW", param);
-            if (currentMount != value) return false;
-
             Transfer(from, null, value);
-
             operateTotalSupply(0 - value);
             return true;
         }

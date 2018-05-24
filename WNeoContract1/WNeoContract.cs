@@ -298,7 +298,6 @@ namespace WNeoContract1
                     byte[] addr = (byte[])args[0];
                     byte[] txid = (byte[])args[1]; 
                     BigInteger value = (BigInteger)args[2];
-
                     return  DestoryByP(addr,txid,value); 
                 }
 
@@ -318,10 +317,8 @@ namespace WNeoContract1
                     param[1] = txid;
                     param[2] = value;
 
-                    //Storage.Put(Storage.CurrentContext,txid,value);
                     //通过跳板合约调用P
                     if (!(bool)JumpCenterContract(operation, param)) return false;
-                    Storage.Delete(Storage.CurrentContext,txid);
                     return Increase(addr, value);
                 }
                 //查询当前存的金额数量

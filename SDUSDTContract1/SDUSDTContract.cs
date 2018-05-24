@@ -342,7 +342,7 @@ namespace SDUSDTContract1
             if (cdpTo.Length > 0)
                 return false;
 
-            //删除原来的CDP
+            //删除CDP
             Storage.Delete(Storage.CurrentContext, keyFrom);
 
             //设置新的CDP
@@ -405,7 +405,7 @@ namespace SDUSDTContract1
             }
             //保存剩余PNEO金额
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            Storage.Put(Storage.CurrentContext,txid,currentRemain);
+
             //拿到该有的PNEO
             object[] param = new object[3];
             param[0] = addr;
@@ -414,7 +414,6 @@ namespace SDUSDTContract1
             if (!(bool)JumpCenterContract("increase", param)) return false;
        
             Storage.Delete(Storage.CurrentContext,otherKey);
-            Storage.Delete(Storage.CurrentContext,txid);
             return true;
         }
 
@@ -481,7 +480,6 @@ namespace SDUSDTContract1
             //拿到该有的PNEO
             //保存剩余PNEO金额
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            Storage.Put(Storage.CurrentContext, txid, canClearPneo);
   
             object[] param = new object[3];
             param[0] = addr;
@@ -489,9 +487,8 @@ namespace SDUSDTContract1
             param[2] = canClearPneo;
             if (!(bool)JumpCenterContract("increase",param)) return false;
 
-            //删除CDP记录
+            //删除CDP
             Storage.Delete(Storage.CurrentContext, key);
-            Storage.Delete(Storage.CurrentContext,txid);
             if (remain > 0) {
                 //被清仓用户剩余PNEO所得
                 var otherKey = otherAddr.Concat(ConvertN(1));
@@ -546,11 +543,8 @@ namespace SDUSDTContract1
             BigInteger balance = BalanceOf(addr);
             if (hasDrawed > balance) return false;
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-
             if (locked > 0)
             {
-                //Storage.Put(Storage.CurrentContext, txid, locked);
-
                 object[] param = new object[3];
                 param[0] = addr;
                 param[1] = txid;
@@ -565,9 +559,8 @@ namespace SDUSDTContract1
                 //减去总量
                 operateTotalSupply(0 - hasDrawed);
             }
-
+            //关闭CDP
             Storage.Delete(Storage.CurrentContext,key);
-            Storage.Delete(Storage.CurrentContext,txid);
 
             //记录交易详细数据
             CDPTransferDetail detail = new CDPTransferDetail();
@@ -580,7 +573,6 @@ namespace SDUSDTContract1
             detail.hasDrawed = hasDrawed;
             Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
             return true;
-
         }
 
         private static Boolean Wipe(byte[] addr, BigInteger wipeMount)
@@ -665,8 +657,6 @@ namespace SDUSDTContract1
             if (freeMount > locked - hasDrawPNeo) return false;
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            //增发PNEO
-            Storage.Put(Storage.CurrentContext, txid, freeMount);
 
             object[] param = new object[3];
             param[0] = addr;
@@ -677,7 +667,6 @@ namespace SDUSDTContract1
             //重新设置锁定量
             cdpInfo.locked = locked - freeMount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(cdpInfo));
-            Storage.Delete(Storage.CurrentContext,txid);
 
             //记录交易详细数据
             CDPTransferDetail detail = new CDPTransferDetail();
