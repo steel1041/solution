@@ -24,7 +24,7 @@ namespace SDTContract1
 
         //超级管理员账户
         //testnet账户  AaBmSJ4Beeg2AeKczpXk89DnmVrPn3SHkU
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -45,7 +45,7 @@ namespace SDTContract1
         //总计数量
         private const ulong TOTAL_AMOUNT = 1000000000 * factor;
 
-        private static string BLACK_HOLE_ACCOUNT = "blackHoleAccount";
+        private const string BLACK_HOLE_ACCOUNT = "blackHoleAccount";
 
         private const string TOTAL_SUPPLY = "totalSupply";
 
@@ -129,7 +129,7 @@ namespace SDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-21 11:30:10";
+            var magicstr = "2018-05-24 16:30:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -176,8 +176,8 @@ namespace SDTContract1
                         return false;
 
                     //检测转出账户是否是黑洞账户,是就返回false
-                    byte[] blackHoleAccount = Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT); 
-                    if (from == blackHoleAccount) return false; 
+                    byte[] blackHoleAccount = getBlackHoleScript(); 
+                    if (from.AsBigInteger() == blackHoleAccount.AsBigInteger()) return false; 
 
                     return Transfer(from, to, value);
                 }
@@ -227,14 +227,19 @@ namespace SDTContract1
 
                     BigInteger value = (BigInteger)args[1];
                     
-                    byte[] blackHoleAccount = Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT);
+                    byte[] blackHoleAccount = getBlackHoleScript();
 
-                    if (from != blackHoleAccount) return false; //判断是否是黑洞账户,且只有黑洞账户才能执行销毁功能.
+                    if (from.AsBigInteger() != blackHoleAccount.AsBigInteger()) return false; //判断是否是黑洞账户,且只有黑洞账户才能执行销毁功能.
 
                     return Burn(from, value);
                 }
             }
             return false;
+        }
+
+        private static byte[] getBlackHoleScript()
+        {
+            return Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT);
         }
 
         public static TransferInfo GetTXInfo(byte[] txid)
