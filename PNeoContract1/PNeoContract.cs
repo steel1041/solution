@@ -19,8 +19,11 @@ namespace PNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
          
-        [Appcall("cd85b19e665412c9c85d1631d836abf02a3d8487")] //JumpCenter ScriptHash
+        [Appcall("c434d9c2241f9e6bc73f728cf0774b37d4299f3e")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
+
+        //[Appcall("60be83c7ef0742450c3530b3de9abc33a9d1050f")] //WNEOContract ScriptHash
+        //public static extern object WNEOContract(string method, object[] args);
 
         //超级管理员账户
         private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
@@ -133,7 +136,7 @@ namespace PNeoContract1
             //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了  
             var callscript = ExecutionEngine.CallingScriptHash;
 
-            var magicstr = "2018-05-18 17:38:10";
+            var magicstr = "2018-05-24 14:38:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -199,59 +202,105 @@ namespace PNeoContract1
                 if (operation == "WNeoToPNeo")
                 {
                     if (args.Length != 2) return false;
-
                     byte[] addr = (byte[])args[0];
+                    BigInteger value = (BigInteger)args[1];
 
                     if (!Runtime.CheckWitness(addr)) return false;
-                    
-                    BigInteger value = (BigInteger)args[1];
-                    
-                    if (!(bool)JumpCenterContract(operation, args)) return false;
 
-                    return Increase(addr, value);
+                    var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+                    object[] param = new object[3];
+                    param[0] = addr;
+                    param[1] = txid;
+                    param[2] = value;
+
+                    //Storage.Put(Storage.CurrentContext, txid, value);
+                    if (!(bool)JumpCenterContract(operation, param)) return false;
+                    return IncreaseBySelf(addr, value);
                 }
                 
                 //P兑换成W，先销毁P
                 if (operation == "PNeoToWNeo")
-                { 
-                    //if (callscript.AsBigInteger() == jumpContract.AsBigInteger()) {
+                {
+                    if (args.Length != 3) return false;
 
-                        if (args.Length != 2) return false;
+                    byte[] addr = (byte[])args[0];
+                    byte[] txid = (byte[])args[1];
+                    BigInteger value = (BigInteger)args[2];
 
-                        byte[] addr = (byte[])args[0];
-                        BigInteger value = (BigInteger)args[1];
+                    //判断调用者是否是跳板合约
+                    byte[] jumpCallScript = getJumpCallScript();
+                    if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
 
-                        if (!Runtime.CheckWitness(addr)) return false;
-                        return Destory(addr, value);
-                  // }
-
-                    //return false;
+                    return DestoryByW(addr,txid,value);
                 }
                 
                 //销毁代币，直接方法，风险极高
                 if (operation == "destory")
                 {
-                    if (args.Length != 2) return false;
+                    if (args.Length != 3) return false;
                     byte[] addr = (byte[])args[0];
-                        
+                    byte[] txid = (byte[])args[1];
+                    BigInteger value = (BigInteger)args[2];
+
                     if (!Runtime.CheckWitness(addr)) return false;
-                    BigInteger value = (BigInteger)args[1];
-                    return Destory(addr, value);
+                    //判断调用者是否是跳板合约
+                    byte[] jumpCallScript = getJumpCallScript();
+                    if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
+
+                    return DestoryBySD(addr,txid,value);
                 }
                 //增发代币，直接方法，风险极高
                 if (operation == "increase")
                 {
-                    if (args.Length != 2) return false;
+                    if (args.Length != 3) return false;
                     byte[] addr = (byte[])args[0];
+                    byte[] txid = (byte[])args[1];
+                    BigInteger value = (BigInteger)args[2];
 
                     if (!Runtime.CheckWitness(addr)) return false;
-                    BigInteger value = (BigInteger)args[1];
-                    return Increase(addr, value);
+                    //判断调用者是否是跳板合约
+                    byte[] jumpCallScript = getJumpCallScript();
+                    if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
+                    return IncreaseBySD(addr,txid,value);
                 }
-                
+                //查询当前存的金额数量
+                if (operation == "currentMountByP")
+                {
+                    if (args.Length != 1) return false;
+                    byte[] txid = (byte[])args[0];
+                    return currentMountByP(txid);
+                }
+                //设置跳板调用合约地址
+                if (operation == "setCallScript")
+                {
+                    if (args.Length != 1) return false;
+                    byte[] callScript = (byte[])args[0];
+
+                    //超级管理员设置跳板合约地址
+                    if (!Runtime.CheckWitness(SuperAdmin)) return false;
+                    return setCallScript(callScript);
+
+                }
+
 
             }
             return false;
+        }
+
+        private static bool setCallScript(byte[] callScript)
+        {
+            Storage.Put(Storage.CurrentContext,"callScript",callScript);
+            return true;
+        }
+
+        private static byte[] getJumpCallScript()
+        {
+            return Storage.Get(Storage.CurrentContext, "callScript");
+        }
+
+        private static BigInteger currentMountByP(byte[] txid)
+        {
+            return Storage.Get(Storage.CurrentContext, txid).AsBigInteger();
         }
 
         public static bool operateTotalSupply(BigInteger mount)
@@ -451,10 +500,19 @@ namespace PNeoContract1
         }
 
         //增发货币
-        public static bool Increase(byte[] to, BigInteger value)
+        public static bool IncreaseBySD(byte[] to,byte[] txid,BigInteger value)
         {
             if (value <= 0) return false;
-            if (!Runtime.CheckWitness(to)) return false;
+
+            Transfer(null, to, value);
+
+            operateTotalSupply(value);
+            return true;
+        }
+        //增发货币
+        public static bool IncreaseBySelf(byte[] to,  BigInteger value)
+        {
+            if (value <= 0) return false;
 
             Transfer(null, to, value);
 
@@ -463,14 +521,30 @@ namespace PNeoContract1
         }
 
         //销毁货币
-        public static bool Destory(byte[] from, BigInteger value)
+        public static bool DestoryBySD(byte[] from, byte[] txid, BigInteger value)
+        {
+            if (value <= 0) return false;
+
+            //object[] param = new object[1];
+            //param[0] = txid;
+            ////查询SD合约
+            //var currentMount = (BigInteger)JumpCenterContract("currentMountBySD", param);
+            //if (currentMount != value) return false;
+
+            Transfer(from, null, value);
+
+            operateTotalSupply(0-value);
+            return true;
+        }
+
+        //销毁货币
+        public static bool DestoryByW(byte[] from, byte[] txid,BigInteger value)
         {
             if (value <= 0) return false;
             if (!Runtime.CheckWitness(from)) return false;
 
             Transfer(from, null, value);
-
-            operateTotalSupply(0-value);
+            operateTotalSupply(0 - value);
             return true;
         }
 

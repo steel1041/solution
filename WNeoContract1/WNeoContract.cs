@@ -23,7 +23,7 @@ namespace WNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
 
-        [Appcall("cd85b19e665412c9c85d1631d836abf02a3d8487")] //JumpCenter ScriptHash
+        [Appcall("c434d9c2241f9e6bc73f728cf0774b37d4299f3e")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
 
         //配置参数-NEO市场价格
@@ -138,7 +138,7 @@ namespace WNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-09 17:37:10";
+            var magicstr = "2018-05-23 15:04:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -290,20 +290,15 @@ namespace WNeoContract1
                     return MintTokens(type);
                 }
 
-                //WNeo换成PNeo(被PNeo动态调用)
+                //W兑换P，销毁W
                 if (operation == "WNeoToPNeo")
                 { 
-                    if (args.Length != 2) return false;
+                    if (args.Length != 3) return false;
 
                     byte[] addr = (byte[])args[0];
-
-                    if (!Runtime.CheckWitness(addr)) return false;
-                     
-                    BigInteger value = (BigInteger)args[1];
-
-                    if (value > BalanceOf(addr)) return false;
-
-                    return  Destory(addr, value); 
+                    byte[] txid = (byte[])args[1]; 
+                    BigInteger value = (BigInteger)args[2];
+                    return  DestoryByP(addr,txid,value); 
                 }
 
                 //PNeo兑换WNeo
@@ -315,17 +310,55 @@ namespace WNeoContract1
                     BigInteger value = (BigInteger)args[1];
 
                     if (!Runtime.CheckWitness(addr)) return false;
-                     
-                    //通过跳板合约调用PNeo
-                    if (!(bool)JumpCenterContract(operation, args)) return false;
-                    
+
+                    var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+                    object[] param = new object[3];
+                    param[0] = addr;
+                    param[1] = txid;
+                    param[2] = value;
+
+                    //通过跳板合约调用P
+                    if (!(bool)JumpCenterContract(operation, param)) return false;
                     return Increase(addr, value);
+                }
+                //查询当前存的金额数量
+                if (operation == "currentMountByW")
+                {
+                    if (args.Length != 1) return false;
+                    byte[] txid = (byte[])args[0];
+                    return currentMountByW(txid);
+                }
+                //设置跳板调用合约地址
+                if (operation == "setCallScript")
+                {
+                    if (args.Length != 1) return false;
+                    byte[] callScript = (byte[])args[0];
+
+                    //超级管理员设置跳板合约地址
+                    if (!Runtime.CheckWitness(SuperAdmin)) return false;
+                    return setCallScript(callScript);
+
                 }
 
             }
             return false;
         }
 
+        private static bool setCallScript(byte[] callScript)
+        {
+            Storage.Put(Storage.CurrentContext, "callScript", callScript);
+            return true;
+        }
+
+        private static byte[] getJumpCallScript()
+        {
+            return Storage.Get(Storage.CurrentContext, "callScript");
+        }
+
+        private static BigInteger currentMountByW(byte[] txid)
+        {
+            return Storage.Get(Storage.CurrentContext, txid).AsBigInteger();
+        }
 
         //退款
         public static bool Refund(byte[] who)
@@ -605,13 +638,19 @@ namespace WNeoContract1
         }
 
         //销毁货币
-        public static bool Destory(byte[] from, BigInteger value)
+        public static bool DestoryByP(byte[] from,byte[] txid,BigInteger value)
         {
             if (value <= 0) return false;
             if (!Runtime.CheckWitness(from)) return false;
 
+            //object[] param = new object[1];
+            //param[0] = txid;
+            //查询P合约
+            //var currentMount = (BigInteger)JumpCenterContract("currentMountByP", param);
+            //if (currentMount != value) return false;
+
             Transfer(from, null, value);
-            operateTotalSupply(0-value);
+            operateTotalSupply(0 - value);
             return true;
         }
 
