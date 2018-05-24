@@ -26,7 +26,6 @@ namespace JumpCenter
             {
                 if (Runtime.CheckWitness(SuperAdmin))
                 {
-
                     Storage.Put(Storage.CurrentContext, TARGET_WNEO, (byte[])args[0]);
                     return new byte[] { 0x01 };
                 }

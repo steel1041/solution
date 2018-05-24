@@ -24,7 +24,7 @@ namespace SDTContract1
 
         //超级管理员账户
         //testnet账户  AaBmSJ4Beeg2AeKczpXk89DnmVrPn3SHkU
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AaBmSJ4Beeg2AeKczpXk89DnmVrPn3SHkU");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -44,6 +44,8 @@ namespace SDTContract1
 
         //总计数量
         private const ulong TOTAL_AMOUNT = 1000000000 * factor;
+
+        private static string BLACK_HOLE_ACCOUNT = "blackHoleAccount";
 
         private const string TOTAL_SUPPLY = "totalSupply";
 
@@ -82,10 +84,9 @@ namespace SDTContract1
         ///   Transaction Successful?
         /// </returns>
         public static bool Transfer(byte[] from, byte[] to, BigInteger value)
-        {
-      
+        {  
             if (value <= 0) return false;
-            
+
             if (from == to) return true;
 
             //付款方
@@ -157,7 +158,7 @@ namespace SDTContract1
                     return Init();
                 }
                 if (operation == "transfer")
-                {
+                { 
                     if (args.Length != 3) return false;
                     byte[] from = (byte[])args[0];
                     byte[] to = (byte[])args[1];
@@ -165,6 +166,7 @@ namespace SDTContract1
                         return true;
                     if (from.Length == 0 || to.Length == 0)
                         return false;
+                      
                     BigInteger value = (BigInteger)args[2];
                     //没有from签名，不让转
                     if (!Runtime.CheckWitness(from))
@@ -172,6 +174,11 @@ namespace SDTContract1
                     //如果有跳板调用，不让转
                     if (ExecutionEngine.EntryScriptHash.AsBigInteger() != callscript.AsBigInteger())
                         return false;
+
+                    //检测转出账户是否是黑洞账户,是就返回false
+                    byte[] blackHoleAccount = Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT); 
+                    if (from == blackHoleAccount) return false; 
+
                     return Transfer(from, to, value);
                 }
                 //允许赋权操作的金额
@@ -201,6 +208,31 @@ namespace SDTContract1
                     byte[] txid = (byte[])args[0];
                     return GetTXInfo(txid);
                 }
+
+                if (operation == "setBlackHole")
+                {//设置黑洞账户，只有超级管理员才有权限
+
+                    if (args.Length != 1) return false;
+
+                    byte[] account = (byte[])args[0];
+
+                    return SetBlackHoleAccount(account);
+                }
+
+                if (operation == "burn")
+                {//销毁
+                    if (args.Length != 2) return false;
+
+                    byte[] from = (byte[])args[0];
+
+                    BigInteger value = (BigInteger)args[1];
+                    
+                    byte[] blackHoleAccount = Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT);
+
+                    if (from != blackHoleAccount) return false; //判断是否是黑洞账户,且只有黑洞账户才能执行销毁功能.
+
+                    return Burn(from, value);
+                }
             }
             return false;
         }
@@ -210,6 +242,7 @@ namespace SDTContract1
             byte[] v = Storage.Get(Storage.CurrentContext, txid);
             if (v.Length == 0)
                 return null;
+
 
             //老式实现方法
             TransferInfo info = new TransferInfo();
@@ -231,6 +264,17 @@ namespace SDTContract1
             //return (TransferInfo)Helper.Deserialize(v);
         }
 
+
+        public static bool SetBlackHoleAccount(byte[] account)
+        {//设置黑洞账户,只有超管才有权限
+
+            if (!Runtime.CheckWitness(SuperAdmin)) return false;
+
+            Storage.Put(Storage.CurrentContext, BLACK_HOLE_ACCOUNT, account);
+
+            return true;
+        }
+         
         private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
         {
             //因为testnet 还在2.6，限制
@@ -265,9 +309,7 @@ namespace SDTContract1
 
         //把doublezero定义出来就好了，...... 要查编译器了
         static readonly byte[] doublezero = new byte[2] { 0x00, 0x00 };
-
-      
-
+        
         public class TransferInfo
         {
             public byte[] from;
@@ -430,6 +472,28 @@ namespace SDTContract1
             return false;
         }
 
+        //销毁货币
+        public static bool Burn(byte[] from, BigInteger value)
+        { 
+            if (value <= 0) return false;
+
+            if (!Runtime.CheckWitness(from)) return false;
+
+            Transfer(from, null, value);
+
+            operateTotalSupply(0 - value);
+            return true;
+        }
+
+        public static bool operateTotalSupply(BigInteger mount)
+        {
+            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            if (current + mount >= 0)
+            {
+                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current + mount);
+            }
+            return true;
+        }
 
         private static byte[] IntToBytes(BigInteger value)
         {
