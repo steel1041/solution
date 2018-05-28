@@ -57,6 +57,8 @@ namespace WNeoContract1
 
         private const string TOTAL_SUPPLY = "totalSupply";
 
+        private const string TOTAL_DESTORY = "totalDestory";
+
         public static byte Decimals()
         {
             return 8;
@@ -298,6 +300,9 @@ namespace WNeoContract1
                     byte[] addr = (byte[])args[0];
                     byte[] txid = (byte[])args[1]; 
                     BigInteger value = (BigInteger)args[2];
+                    //判断调用者是否是跳板合约
+                    byte[] jumpCallScript = getJumpCallScript();
+                    if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
                     return  DestoryByP(addr,txid,value); 
                 }
 
@@ -339,9 +344,16 @@ namespace WNeoContract1
                     return setCallScript(callScript);
 
                 }
+                if (operation == "totalDestory") return TotalDestory();
+
 
             }
             return false;
+        }
+
+        private static BigInteger TotalDestory()
+        {
+            return Storage.Get(Storage.CurrentContext,TOTAL_DESTORY).AsBigInteger();
         }
 
         private static bool setCallScript(byte[] callScript)
@@ -643,14 +655,17 @@ namespace WNeoContract1
             if (value <= 0) return false;
             if (!Runtime.CheckWitness(from)) return false;
 
-            //object[] param = new object[1];
-            //param[0] = txid;
-            //查询P合约
-            //var currentMount = (BigInteger)JumpCenterContract("currentMountByP", param);
-            //if (currentMount != value) return false;
-
             Transfer(from, null, value);
             operateTotalSupply(0 - value);
+            //记录总抵押量
+            operateTotalDestory(from,value);
+            return true;
+        }
+
+        private static bool operateTotalDestory(byte[] from, BigInteger value)
+        {
+            BigInteger curr = Storage.Get(Storage.CurrentContext,TOTAL_DESTORY).AsBigInteger();
+            Storage.Put(Storage.CurrentContext,TOTAL_DESTORY,curr + value);
             return true;
         }
 

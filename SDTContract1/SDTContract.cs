@@ -45,7 +45,15 @@ namespace SDTContract1
         //总计数量
         private const ulong TOTAL_AMOUNT = 1000000000 * factor;
 
-        private const string BLACK_HOLE_ACCOUNT = "blackHoleAccount";
+        private const string BLACK_HOLE_ACCOUNT_01 = "blackHoleAccount01";
+
+        private const string BLACK_HOLE_ACCOUNT_02 = "blackHoleAccount02";
+
+        private const string BLACK_HOLE_TYPE = "blackHoleType";
+
+        private const string MINT_TYPE = "mintType";
+
+        private const string CALL_SCRIPT = "callScript";
 
         private const string TOTAL_SUPPLY = "totalSupply";
 
@@ -129,7 +137,7 @@ namespace SDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-24 16:30:10";
+            var magicstr = "2018-05-28 16:30:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -177,7 +185,7 @@ namespace SDTContract1
 
                     //检测转出账户是否是黑洞账户,是就返回false
                     byte[] blackHoleAccount = getBlackHoleScript(); 
-                    if (from.AsBigInteger() == blackHoleAccount.AsBigInteger()) return false; 
+                    if (blackHoleAccount.Length > 0 && from.AsBigInteger() == blackHoleAccount.AsBigInteger()) return false; 
 
                     return Transfer(from, to, value);
                 }
@@ -208,7 +216,6 @@ namespace SDTContract1
                     byte[] txid = (byte[])args[0];
                     return GetTXInfo(txid);
                 }
-
                 if (operation == "setBlackHole")
                 {//设置黑洞账户，只有超级管理员才有权限
 
@@ -218,7 +225,6 @@ namespace SDTContract1
 
                     return SetBlackHoleAccount(account);
                 }
-
                 if (operation == "burn")
                 {//销毁
                     if (args.Length != 2) return false;
@@ -233,13 +239,97 @@ namespace SDTContract1
 
                     return Burn(from, value);
                 }
+                //按照业务规则，在前提条件下增发
+                if (operation == "mint")
+                {
+                    BigInteger type = getMintType(MINT_TYPE);
+                    byte[] addr = (byte[])args[0];
+                    BigInteger value = (BigInteger)args[1];
+                    //合约调用
+                    if (type == 1){
+                        //判断调用者是否是跳板合约
+                        byte[] jumpCallScript = getJumpCallScript();
+                        if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
+
+                        if (!Runtime.CheckWitness(addr)) return false;
+                        return mintToken(addr,value);
+                    }
+                    //管理员设置
+                    else if (type == 2){
+                        if (!Runtime.CheckWitness(SuperAdmin)) return false;
+                        return mintToken(SuperAdmin,value);
+                    }
+                }
+                //设置合约参数
+                if (operation == "setCallScript")
+                {
+                    if (args.Length != 2) return false;
+                    string type = (string)args[0];
+
+                    //超级管理员设置跳板合约地址
+                    if (!Runtime.CheckWitness(SuperAdmin)) return false;
+
+                    if (type == CALL_SCRIPT) {
+                        byte[] addr = (byte[])args[1];
+                        return setCallScript(type, addr);
+                    }
+                    if (type == BLACK_HOLE_TYPE || type == MINT_TYPE) {
+                        BigInteger holeType = (BigInteger)args[1];
+                        return setHoleType(type, holeType);
+                    }
+                    return false;
+                }
+                
             }
             return false;
         }
 
+        private static bool mintToken(byte[] addr, BigInteger value)
+        {
+            Transfer(null,addr,value);
+            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            if (current + value >= 0)
+            {
+                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current + value);
+            }
+            return true;
+        }
+
+        private static byte[] getJumpCallScript()
+        {
+            return Storage.Get(Storage.CurrentContext, CALL_SCRIPT);
+        }
+
+        private static BigInteger getMintType(string v)
+        {
+            return Storage.Get(Storage.CurrentContext,v).AsBigInteger();
+        }
+
+        private static bool setCallScript(string type,byte[] callScript)
+        {
+            //BLACK_HOLE_TYPE、CALL_SCRIPT
+            Storage.Put(Storage.CurrentContext, type, callScript);
+            return true;
+        }
+
+        private static bool setHoleType(string type, BigInteger callScript)
+        {
+            //BLACK_HOLE_TYPE、CALL_SCRIPT
+            Storage.Put(Storage.CurrentContext, type, callScript);
+            return true;
+        }
+
         private static byte[] getBlackHoleScript()
         {
-            return Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT);
+            //允许设置多个账户，限制2个
+            byte[] account1 = Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT_01);
+            byte[] account2 = Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT_02);
+            BigInteger blackHoleType = Storage.Get(Storage.CurrentContext, BLACK_HOLE_TYPE).AsBigInteger();
+
+            if (account1.Length > 0 && blackHoleType == 1) return account1;
+            if (account2.Length > 0 && blackHoleType == 2) return account2;
+
+            return account1;
         }
 
         public static TransferInfo GetTXInfo(byte[] txid)
@@ -271,12 +361,28 @@ namespace SDTContract1
 
 
         public static bool SetBlackHoleAccount(byte[] account)
-        {//设置黑洞账户,只有超管才有权限
-
+        {//设置管理费账户,只有超管才有权限
             if (!Runtime.CheckWitness(SuperAdmin)) return false;
+            //允许设置多个账户，限制2个
+            byte[] account1 = Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT_01);    
+            byte[] account2 = Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT_02);
 
-            Storage.Put(Storage.CurrentContext, BLACK_HOLE_ACCOUNT, account);
+            int a1 = account1.Length;
+            int a2 = account2.Length;
+            if (a1 > 0 && a2 > 0) return false;
 
+            //账户不能重复设置
+            if (a1 > 0 && (account1.AsBigInteger() == account.AsBigInteger())) return false;
+
+            if (a2 > 0 && (account2.AsBigInteger() == account.AsBigInteger())) return false;
+
+            //两个账户哪个没有就设置哪个，如果都有就不能设置
+            if (a1 == 0) {
+                Storage.Put(Storage.CurrentContext,BLACK_HOLE_ACCOUNT_01,account);
+            }
+            if (a2 == 0) {
+                Storage.Put(Storage.CurrentContext, BLACK_HOLE_ACCOUNT_02,account);
+            }
             return true;
         }
          
