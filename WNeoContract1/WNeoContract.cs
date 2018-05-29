@@ -23,7 +23,7 @@ namespace WNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
 
-        [Appcall("c434d9c2241f9e6bc73f728cf0774b37d4299f3e")] //JumpCenter ScriptHash
+        [Appcall("d082947c268cd44a9022a6ec336dc8eb491fa836")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
 
         //配置参数-NEO市场价格
@@ -140,7 +140,7 @@ namespace WNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-23 15:04:10";
+            var magicstr = "2018-05-29 15:04:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -266,8 +266,8 @@ namespace WNeoContract1
                 if (operation == "getRefundTarget")
                 {
                     if (args.Length != 1) return 0;
-                    byte[] hash = (byte[])args[0];
-                    return getRefundTarget(hash);
+                    byte[] txid = (byte[])args[0];
+                    return getRefundTarget(txid);
                 }
                 //设置全局参数
                 if (operation == "setConfig")
@@ -282,7 +282,6 @@ namespace WNeoContract1
                 {
                     if (args.Length != 1) return false;
                     string key = (string)args[0];
-
                     return GetConfig(key);
                 }
                 if (operation == "mintTokens")
@@ -327,12 +326,12 @@ namespace WNeoContract1
                     return Increase(addr, value);
                 }
                 //查询当前存的金额数量
-                if (operation == "currentMountByW")
-                {
-                    if (args.Length != 1) return false;
-                    byte[] txid = (byte[])args[0];
-                    return currentMountByW(txid);
-                }
+                //if (operation == "currentMountByW")
+                //{
+                //    if (args.Length != 1) return false;
+                //    byte[] txid = (byte[])args[0];
+                //    return currentMountByW(txid);
+                //}
                 //设置跳板调用合约地址
                 if (operation == "setCallScript")
                 {
@@ -344,7 +343,11 @@ namespace WNeoContract1
                     return setCallScript(callScript);
 
                 }
-                if (operation == "totalDestory") return TotalDestory();
+                //计算总抵押数
+                if (operation == "totalDestory")
+                {
+                    return TotalDestory();
+                }
 
 
             }

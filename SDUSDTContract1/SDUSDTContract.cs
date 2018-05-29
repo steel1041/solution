@@ -23,10 +23,6 @@ namespace SDUSDTContract1
         //超级管理员账户
         private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
-        //调用PNeo合约
-        //[Appcall("dcb83295dd5db007107e30722990d612373bc6ab")]
-        //public static extern Boolean PNeoContract(string operation, params object[] args);
-
         [Appcall("c434d9c2241f9e6bc73f728cf0774b37d4299f3e")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
 
@@ -37,7 +33,7 @@ namespace SDUSDTContract1
         }
         public static string Name()
         {
-            return "SD USD";
+            return "Special Drawing USD";
         }
         public static string Symbol()
         {
@@ -50,6 +46,8 @@ namespace SDUSDTContract1
         private const ulong TOTAL_AMOUNT = 0;
 
         private const string TOTAL_SUPPLY = "totalSupply";
+
+        private const string TOTAL_GENERATE = "totalGenerate";
 
         //配置参数-兑换比率，百分位，如150、200
         private const string CONFIG_RATE = "neo_rate";
@@ -239,14 +237,14 @@ namespace SDUSDTContract1
                     byte[] addr = (byte[])args[0];
                     return OpenCDP(addr);
                 }
-                //查询在仓记录
+                //查询债仓记录
                 if (operation == "getCdp")
                 {
                     if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
                     return GetCdp(addr);
                 }
-                //查询在仓详细操作记录
+                //查询债仓详细操作记录
                 if (operation == "getCdpTxInfo")
                 {
                     if (args.Length != 1) return false;
@@ -317,14 +315,18 @@ namespace SDUSDTContract1
                     byte[] toAdd = (byte[])args[1];
                     return Give(fromAdd,toAdd);
                 }
-                //查询当前存的金额数量
-                if (operation == "currentMountBySD") {
-                    if (args.Length != 1) return false;
-                    byte[] txid = (byte[])args[0];
-                    return currentMount(txid);
+                //计算总生成数量
+                if (operation == "totalGenerate")
+                {
+                    return TotalGenerate();
                 }
             }
             return false;
+        }
+
+        private static BigInteger TotalGenerate()
+        {
+            return Storage.Get(Storage.CurrentContext, TOTAL_GENERATE).AsBigInteger();
         }
 
         private static bool Give(byte[] fromAdd, byte[] toAdd)
@@ -778,6 +780,8 @@ namespace SDUSDTContract1
             Transfer(null, addr, drawMount);
             //增加总金额
             operateTotalSupply(drawMount);
+            //记录总生成量
+            recordTotalGenerate(drawMount);
 
             //设置已经获取量
             cdpInfo.hasDrawed = hasDrawed + drawMount;
@@ -797,6 +801,13 @@ namespace SDUSDTContract1
             Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
             return true;
 
+        }
+
+        private static bool recordTotalGenerate(BigInteger drawMount)
+        {
+            BigInteger curr = Storage.Get(Storage.CurrentContext, TOTAL_GENERATE).AsBigInteger();
+            Storage.Put(Storage.CurrentContext, TOTAL_GENERATE, curr + drawMount);
+            return true;
         }
 
         /// <summary>

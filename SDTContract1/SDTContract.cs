@@ -16,8 +16,6 @@ namespace SDTContract1
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
-        [DisplayName("refund")]
-        public static event Action<byte[], byte[], BigInteger> Refunded;
 
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
@@ -207,7 +205,7 @@ namespace SDTContract1
                 }
                 if (operation == "transferFrom")
                 {
-                    //args[0]转账账户  args[1]被授权账户 args[2]被转账账户   args[3]被转账金额
+                    //args[0]转账账户  args[1]被授权账户 args[2]被转入账户   args[3]被转账金额
                     return TransferFrom((byte[])args[0], (byte[])args[1], (byte[])args[2], (BigInteger)args[3]);
                 }
                 if (operation == "getTXInfo")
@@ -217,7 +215,7 @@ namespace SDTContract1
                     return GetTXInfo(txid);
                 }
                 if (operation == "setBlackHole")
-                {//设置黑洞账户，只有超级管理员才有权限
+                {//设置手续费管理账户，只有超级管理员才有权限
 
                     if (args.Length != 1) return false;
 

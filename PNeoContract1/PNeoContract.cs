@@ -19,17 +19,13 @@ namespace PNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
          
-        [Appcall("c434d9c2241f9e6bc73f728cf0774b37d4299f3e")] //JumpCenter ScriptHash
+        [Appcall("d082947c268cd44a9022a6ec336dc8eb491fa836")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
-
-        //[Appcall("60be83c7ef0742450c3530b3de9abc33a9d1050f")] //WNEOContract ScriptHash
-        //public static extern object WNEOContract(string method, object[] args);
 
         //超级管理员账户
         private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
-        //static readonly byte[] jumpContract = Helper.ToScriptHash("AJTCnzAkMETzxLDmhNgxdJkUUJzXpT1Jhy");    //PNeoJumpContract address
-        //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("Aeto8Loxsh7nXWoVS4FzBkUrFuiCB3Qidn");
+        private const string TOTAL_DESTORY = "totalDestory";
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -136,7 +132,7 @@ namespace PNeoContract1
             //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了  
             var callscript = ExecutionEngine.CallingScriptHash;
 
-            var magicstr = "2018-05-24 14:38:10";
+            var magicstr = "2018-05-29 14:38:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -264,12 +260,12 @@ namespace PNeoContract1
                     return IncreaseBySD(addr,txid,value);
                 }
                 //查询当前存的金额数量
-                if (operation == "currentMountByP")
-                {
-                    if (args.Length != 1) return false;
-                    byte[] txid = (byte[])args[0];
-                    return currentMountByP(txid);
-                }
+                //if (operation == "currentMountByP")
+                //{
+                //    if (args.Length != 1) return false;
+                //    byte[] txid = (byte[])args[0];
+                //    return currentMountByP(txid);
+                //}
                 //设置跳板调用合约地址
                 if (operation == "setCallScript")
                 {
@@ -279,12 +275,20 @@ namespace PNeoContract1
                     //超级管理员设置跳板合约地址
                     if (!Runtime.CheckWitness(SuperAdmin)) return false;
                     return setCallScript(callScript);
-
                 }
-
+                //计算总抵押数
+                if (operation == "totalDestory")
+                {
+                    return TotalDestory();
+                }
 
             }
             return false;
+        }
+
+        private static BigInteger TotalDestory()
+        {
+            return Storage.Get(Storage.CurrentContext, TOTAL_DESTORY).AsBigInteger();
         }
 
         private static bool setCallScript(byte[] callScript)
@@ -525,15 +529,18 @@ namespace PNeoContract1
         {
             if (value <= 0) return false;
 
-            //object[] param = new object[1];
-            //param[0] = txid;
-            ////查询SD合约
-            //var currentMount = (BigInteger)JumpCenterContract("currentMountBySD", param);
-            //if (currentMount != value) return false;
-
             Transfer(from, null, value);
 
             operateTotalSupply(0-value);
+
+            //记录总抵押量
+            operateTotalDestory(from, value);
+            return true;
+        }
+        private static bool operateTotalDestory(byte[] from, BigInteger value)
+        {
+            BigInteger curr = Storage.Get(Storage.CurrentContext, TOTAL_DESTORY).AsBigInteger();
+            Storage.Put(Storage.CurrentContext, TOTAL_DESTORY, curr + value);
             return true;
         }
 
