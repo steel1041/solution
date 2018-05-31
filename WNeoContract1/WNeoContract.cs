@@ -23,7 +23,7 @@ namespace WNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
 
-        [Appcall("d082947c268cd44a9022a6ec336dc8eb491fa836")] //JumpCenter ScriptHash
+        [Appcall("4613efff94a4f272f35dcb5339424bbb6939fd11")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
 
         //配置参数-NEO市场价格
@@ -140,7 +140,7 @@ namespace WNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-29 15:04:10";
+            var magicstr = "2018-05-31 15:04:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -294,15 +294,15 @@ namespace WNeoContract1
                 //W兑换P，销毁W
                 if (operation == "WNeoToPNeo")
                 { 
-                    if (args.Length != 3) return false;
+                    if (args.Length != 2) return false;
 
                     byte[] addr = (byte[])args[0];
-                    byte[] txid = (byte[])args[1]; 
-                    BigInteger value = (BigInteger)args[2];
+                    BigInteger value = (BigInteger)args[1];
                     //判断调用者是否是跳板合约
-                    byte[] jumpCallScript = getJumpCallScript();
+                    byte[] jumpCallScript = Storage.Get(Storage.CurrentContext, "callScript");
                     if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
-                    return  DestoryByP(addr,txid,value); 
+
+                    return  DestoryByP(addr,null,value); 
                 }
 
                 //PNeo兑换WNeo
@@ -473,6 +473,8 @@ namespace WNeoContract1
 
             //改变总量
             operateTotalSupply(realValue);
+
+            operateTotalDestory(who,realValue);
             return Transfer(null, who, realValue);
         }
 
@@ -659,9 +661,16 @@ namespace WNeoContract1
             if (!Runtime.CheckWitness(from)) return false;
 
             Transfer(from, null, value);
-            operateTotalSupply(0 - value);
-            //记录总抵押量
-            operateTotalDestory(from,value);
+
+            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            if (current - value >= 0)
+            {
+                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current - value);
+            }
+
+            //operateTotalSupply(0 - value);
+            ////记录总抵押量
+            //operateTotalDestory(from,value);
             return true;
         }
 

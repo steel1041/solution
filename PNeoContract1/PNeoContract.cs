@@ -19,7 +19,7 @@ namespace PNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
          
-        [Appcall("d082947c268cd44a9022a6ec336dc8eb491fa836")] //JumpCenter ScriptHash
+        [Appcall("4613efff94a4f272f35dcb5339424bbb6939fd11")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
 
         //超级管理员账户
@@ -132,7 +132,7 @@ namespace PNeoContract1
             //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了  
             var callscript = ExecutionEngine.CallingScriptHash;
 
-            var magicstr = "2018-05-29 14:38:10";
+            var magicstr = "2018-05-31 14:38:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -203,13 +203,11 @@ namespace PNeoContract1
 
                     if (!Runtime.CheckWitness(addr)) return false;
 
-                    var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+                    //var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
                     object[] param = new object[3];
                     param[0] = addr;
-                    param[1] = txid;
-                    param[2] = value;
+                    param[1] = value;
 
-                    //Storage.Put(Storage.CurrentContext, txid, value);
                     if (!(bool)JumpCenterContract(operation, param)) return false;
                     return IncreaseBySelf(addr, value);
                 }

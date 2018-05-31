@@ -47,8 +47,10 @@ namespace SDTContract1
 
         private const string BLACK_HOLE_ACCOUNT_02 = "blackHoleAccount02";
 
+        //1:使用账户1  2:使用账户2
         private const string BLACK_HOLE_TYPE = "blackHoleType";
 
+        //1:合约调用  2:管理员设置
         private const string MINT_TYPE = "mintType";
 
         private const string CALL_SCRIPT = "callScript";

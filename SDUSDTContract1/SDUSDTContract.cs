@@ -23,7 +23,7 @@ namespace SDUSDTContract1
         //超级管理员账户
         private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
-        [Appcall("c434d9c2241f9e6bc73f728cf0774b37d4299f3e")] //JumpCenter ScriptHash
+        [Appcall("4613efff94a4f272f35dcb5339424bbb6939fd11")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
 
         //nep5 func
@@ -153,7 +153,7 @@ namespace SDUSDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-23 10:40:10";
+            var magicstr = "2018-05-31 10:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -723,7 +723,7 @@ namespace SDUSDTContract1
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
 
             //销毁PNeo
-            Storage.Put(Storage.CurrentContext,txid,lockMount);
+            //Storage.Put(Storage.CurrentContext,txid,lockMount);
             object[] param = new object[3];
             param[0] = addr;
             param[1] = txid;
