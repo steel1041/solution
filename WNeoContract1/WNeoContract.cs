@@ -23,7 +23,7 @@ namespace WNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
 
-        [Appcall("4613efff94a4f272f35dcb5339424bbb6939fd11")] //JumpCenter ScriptHash
+        [Appcall("95e6b39d3557f5ba5ba59fab178f6de3c24e3d04")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
 
         //配置参数-NEO市场价格
@@ -140,7 +140,7 @@ namespace WNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-31 15:04:10";
+            var magicstr = "2018-06-01 15:04:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -402,7 +402,7 @@ namespace WNeoContract1
             byte[] coinid = tx.Hash.Concat(new byte[] { 0, 0 });
             Storage.Put(Storage.CurrentContext,coinid, who);
             //改变总量
-            operateTotalSupply(-count);
+            operateTotalSupply(0-count);
             return true;
         }
 
@@ -487,7 +487,7 @@ namespace WNeoContract1
                 if (neoPrice == 0 || gasPrice == 0) {
                     return value * 2/10;
                 }
-                return value * (gasPrice/neoPrice);
+                return value * gasPrice/neoPrice;
             }
             return value;
         }

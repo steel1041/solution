@@ -13,6 +13,8 @@ namespace SDUSDTContract1
         //NEO Asset
         private static readonly byte[] neo_asset_id = { 155, 124, 255, 218, 166, 116, 190, 174, 15, 147, 14, 190, 96, 133, 175, 144, 147, 229, 254, 86, 179, 74, 92, 34, 12, 205, 207, 110, 252, 51, 111, 197 };
 
+        private static readonly byte[] gas_asset_id = Helper.HexToBytes("e72d286979ee6cb1b7e65dfddfb2e384100b8d148e7758de42e4168b71792c60");
+
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
@@ -153,11 +155,12 @@ namespace SDUSDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-31 10:40:10";
+            var magicstr = "2018-06-05 16:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
                 return Runtime.CheckWitness(SuperAdmin);
+               
             }
             else if (Runtime.Trigger == TriggerType.Application)
             {
@@ -215,6 +218,12 @@ namespace SDUSDTContract1
                     byte[] txid = (byte[])args[0];
                     return GetTXInfo(txid);
                 }
+                //if (operation == "mintTokens")
+                //{
+                //    if (args.Length != 1) return 0;
+                //    string type = (string)args[0];
+                //    return MintTokens(type);
+                //}
                 //设置全局参数
                 if (operation == "setConfig") {
                     if (args.Length != 2) return false;
@@ -320,6 +329,20 @@ namespace SDUSDTContract1
                 {
                     return TotalGenerate();
                 }
+                //测试增加sdt
+                if (operation == "mintSDT")
+                {
+                    if (args.Length != 2) return false;
+                    byte[] addr = (byte[])args[0];
+                    BigInteger mount = (BigInteger)args[1];
+                    object[] param = new object[2];
+                    param[0] = addr;
+                    param[1] = mount;
+                    if (!Runtime.CheckWitness(addr)) return false;
+                    if (!(bool)JumpCenterContract("mint", param)) return false;
+
+                    return true;
+                }
             }
             return false;
         }
@@ -327,6 +350,50 @@ namespace SDUSDTContract1
         private static BigInteger TotalGenerate()
         {
             return Storage.Get(Storage.CurrentContext, TOTAL_GENERATE).AsBigInteger();
+        }
+
+        public static bool MintTokens(string type)
+        {
+            var tx = (Transaction)ExecutionEngine.ScriptContainer;
+
+            //默认是gas资产   neo,gas
+            byte[] asset_id = gas_asset_id;
+            if (type == "neo")
+            {
+                asset_id = neo_asset_id;
+            }
+            //获取投资人，谁要换neo or gas
+            byte[] who = null;
+            TransactionOutput[] reference = tx.GetReferences();
+            for (var i = 0; i < reference.Length; i++)
+            {
+                if (reference[i].AssetId.AsBigInteger() == asset_id.AsBigInteger())
+                {
+                    who = reference[i].ScriptHash;
+                    break;
+                }
+            }
+
+            TransactionOutput[] outputs = tx.GetOutputs();
+            ulong value = 0;
+            // get the total amount of Neo
+            // 获取转入智能合约地址的NEO总量
+            foreach (TransactionOutput output in outputs)
+            {
+                if (output.ScriptHash == ExecutionEngine.ExecutingScriptHash &&
+                    output.AssetId.AsBigInteger() == asset_id.AsBigInteger())
+                {
+                    value += (ulong)output.Value;
+                }
+            }
+            //获取实际兑换量
+            //BigInteger realValue = getRealValue(type, value);
+
+            //改变总量
+            //operateTotalSupply(realValue);
+
+            //return Transfer(null, who, realValue);
+            return true;
         }
 
         private static bool Give(byte[] fromAdd, byte[] toAdd)
@@ -456,15 +523,17 @@ namespace SDUSDTContract1
             if (hasDrawed <= 0) return false;
 
             //余额SDUSD是否足够
-            BigInteger myBalance = BalanceOf(addr);
+            BigInteger myBalance = Storage.Get(Storage.CurrentContext, addr).AsBigInteger();
             if (hasDrawed > myBalance) return false;
 
             //当前清算折扣比例
-            BigInteger rateClear = GetConfig(CONFIG_CLEAR_RATE);
+            BigInteger rateClear = Storage.Get(Storage.CurrentContext, CONFIG_CLEAR_RATE.AsByteArray()).AsBigInteger();
+
             //当前兑换率，需要从配置中心获取
-            BigInteger rate = GetConfig(CONFIG_RATE);
+            BigInteger rate = Storage.Get(Storage.CurrentContext, CONFIG_RATE.AsByteArray()).AsBigInteger();
+
             //当前NEO美元价格，需要从价格中心获取
-            BigInteger neoPrice = GetConfig(CONFIG_PRICE_NEO);
+            BigInteger neoPrice = Storage.Get(Storage.CurrentContext, CONFIG_PRICE_NEO.AsByteArray()).AsBigInteger();
 
             //计算可以拿到的pneo
             BigInteger canClearPneo = hasDrawed * rateClear / (neoPrice * 100);
@@ -477,7 +546,11 @@ namespace SDUSDTContract1
             Transfer(addr, null, hasDrawed);
             
             //总量处理
-            operateTotalSupply(0 - hasDrawed);
+            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            if (current - hasDrawed >= 0)
+            {
+                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current - hasDrawed);
+            }
 
             //拿到该有的PNEO
             //保存剩余PNEO金额

@@ -19,7 +19,7 @@ namespace PNeoContract1
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
          
-        [Appcall("4613efff94a4f272f35dcb5339424bbb6939fd11")] //JumpCenter ScriptHash
+        [Appcall("95e6b39d3557f5ba5ba59fab178f6de3c24e3d04")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
 
         //超级管理员账户
@@ -132,7 +132,7 @@ namespace PNeoContract1
             //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了  
             var callscript = ExecutionEngine.CallingScriptHash;
 
-            var magicstr = "2018-05-31 14:38:10";
+            var magicstr = "2018-06-01 14:38:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -253,7 +253,7 @@ namespace PNeoContract1
 
                     if (!Runtime.CheckWitness(addr)) return false;
                     //判断调用者是否是跳板合约
-                    byte[] jumpCallScript = getJumpCallScript();
+                    byte[] jumpCallScript = Storage.Get(Storage.CurrentContext, "callScript");
                     if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
                     return IncreaseBySD(addr,txid,value);
                 }
@@ -508,7 +508,11 @@ namespace PNeoContract1
 
             Transfer(null, to, value);
 
-            operateTotalSupply(value);
+            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            if (current + value >= 0)
+            {
+                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current + value);
+            }
             return true;
         }
         //增发货币

@@ -16,7 +16,6 @@ namespace SDTContract1
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
-
         [DisplayName("approve")]
         public static event Action<byte[], byte[], BigInteger> Approved;
 
@@ -389,7 +388,6 @@ namespace SDTContract1
         private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
         {
             //因为testnet 还在2.6，限制
-
             TransferInfo info = new TransferInfo();
             info.from = from;
             info.to = to;

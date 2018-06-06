@@ -30,7 +30,7 @@ namespace JumpCenter
 
         public static object Main(string method, object[] args)
         {
-            string magicstr = "2018-05-31 11:47:00";
+            string magicstr = "2018-06-01 11:47:00";
             if (method == "setTargetWneo")
             {
                 if (Runtime.CheckWitness(SuperAdmin))
@@ -83,9 +83,6 @@ namespace JumpCenter
             }
 
             var callscript = ExecutionEngine.CallingScriptHash;
-            byte[] targetPneo = Storage.Get(Storage.CurrentContext, TARGET_PNEO);
-            byte[] targetWneo = Storage.Get(Storage.CurrentContext, TARGET_WNEO);
-            byte[] targetSdusd = Storage.Get(Storage.CurrentContext, TARGET_SDUSD);
 
             //P兑换W，P销毁功能,W发起
             if (method == "PNeoToWNeo")
@@ -93,6 +90,7 @@ namespace JumpCenter
                 //判断调用者是否是跳板合约
                 byte[] jumpCallScript = getJumpCallScript(WNEO_CALL_SCRIPT);
                 if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
+                byte[] targetPneo = Storage.Get(Storage.CurrentContext, TARGET_PNEO);
 
                 object[] newarg = new object[3];
                 newarg[0] = args[0];
@@ -104,6 +102,8 @@ namespace JumpCenter
             //P合约查询
             if (method == "currentMountByP")
             {
+                byte[] targetPneo = Storage.Get(Storage.CurrentContext, TARGET_PNEO);
+
                 object[] newarg = new object[1];
                 newarg[0] = args[0];
                 deleDyncall dyncall = (deleDyncall)targetPneo.ToDelegate();
@@ -115,6 +115,7 @@ namespace JumpCenter
                 //判断调用者是否是跳板合约
                 byte[] jumpCallScript = getJumpCallScript(SDUSD_CALL_SCRIPT);
                 if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
+                byte[] targetPneo = Storage.Get(Storage.CurrentContext, TARGET_PNEO);
 
                 object[] newarg = new object[3];
                 newarg[0] = args[0];
@@ -129,6 +130,7 @@ namespace JumpCenter
                 //判断调用者是否是跳板合约
                 byte[] jumpCallScript = getJumpCallScript(SDUSD_CALL_SCRIPT);
                 if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
+                byte[] targetPneo = Storage.Get(Storage.CurrentContext, TARGET_PNEO);
 
                 object[] newarg = new object[3];
                 newarg[0] = args[0];
@@ -143,6 +145,7 @@ namespace JumpCenter
                 //判断调用者是否是跳板合约
                 byte[] jumpCallScript = getJumpCallScript(PNEO_CALL_SCRIPT);
                 if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
+                byte[] targetWneo = Storage.Get(Storage.CurrentContext, TARGET_WNEO);
 
                 object[] newarg = new object[2];
                 newarg[0] = args[0];
@@ -153,6 +156,8 @@ namespace JumpCenter
             //调用W合约金额
             if (method == "currentMountByW")
             {
+                byte[] targetWneo = Storage.Get(Storage.CurrentContext, TARGET_WNEO);
+
                 object[] newarg = new object[1];
                 newarg[0] = args[0];
                 deleDyncall dyncall = (deleDyncall)targetWneo.ToDelegate();
@@ -161,6 +166,7 @@ namespace JumpCenter
             //查询SD合约金额
             if (method == "currentMountBySD")
             {
+                byte[] targetSdusd = Storage.Get(Storage.CurrentContext, TARGET_SDUSD);
                 object[] newarg = new object[1];
                 newarg[0] = args[0];
                 deleDyncall dyncall = (deleDyncall)targetSdusd.ToDelegate();
