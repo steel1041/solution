@@ -136,7 +136,7 @@ namespace SDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-05-28 16:30:10";
+            var magicstr = "2018-06-07 09:30:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -172,8 +172,7 @@ namespace SDTContract1
                     if (from == to)
                         return true;
                     if (from.Length == 0 || to.Length == 0)
-                        return false;
-                      
+                        return false;                      
                     BigInteger value = (BigInteger)args[2];
                     //没有from签名，不让转
                     if (!Runtime.CheckWitness(from))
@@ -378,9 +377,11 @@ namespace SDTContract1
             //两个账户哪个没有就设置哪个，如果都有就不能设置
             if (a1 == 0) {
                 Storage.Put(Storage.CurrentContext,BLACK_HOLE_ACCOUNT_01,account);
+                return true;
             }
             if (a2 == 0) {
                 Storage.Put(Storage.CurrentContext, BLACK_HOLE_ACCOUNT_02,account);
+                return true;
             }
             return true;
         }
