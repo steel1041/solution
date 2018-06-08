@@ -21,7 +21,7 @@ namespace SDTContract1
 
         //超级管理员账户
         //testnet账户  AaBmSJ4Beeg2AeKczpXk89DnmVrPn3SHkU
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AaBmSJ4Beeg2AeKczpXk89DnmVrPn3SHkU");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -359,8 +359,12 @@ namespace SDTContract1
 
 
         public static bool SetBlackHoleAccount(byte[] account)
-        {//设置管理费账户,只有超管才有权限
+        {   //设置管理费账户,只有超管才有权限
             if (!Runtime.CheckWitness(SuperAdmin)) return false;
+
+            //不允许设置成管理员账户
+            if (account.AsBigInteger() == SuperAdmin.AsBigInteger()) return false;
+            
             //允许设置多个账户，限制2个
             byte[] account1 = Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT_01);    
             byte[] account2 = Storage.Get(Storage.CurrentContext, BLACK_HOLE_ACCOUNT_02);
