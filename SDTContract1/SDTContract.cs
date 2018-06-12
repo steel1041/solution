@@ -21,7 +21,7 @@ namespace SDTContract1
 
         //超级管理员账户
         //testnet账户  AaBmSJ4Beeg2AeKczpXk89DnmVrPn3SHkU
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AaBmSJ4Beeg2AeKczpXk89DnmVrPn3SHkU");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
         //nep5 func
         public static BigInteger TotalSupply()
@@ -147,7 +147,7 @@ namespace SDTContract1
             }
             else if (Runtime.Trigger == TriggerType.Application)
             {
-                //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了
+                //入口函数取得callscript，获取调用地址
                 var callscript = ExecutionEngine.CallingScriptHash;
                 //this is in nep5
                 if (operation == "totalSupply") return TotalSupply();
@@ -178,8 +178,8 @@ namespace SDTContract1
                     if (!Runtime.CheckWitness(from))
                         return false;
                     //如果有跳板调用，不让转
-                    if (ExecutionEngine.EntryScriptHash.AsBigInteger() != callscript.AsBigInteger())
-                        return false;
+                    //if (ExecutionEngine.EntryScriptHash.AsBigInteger() != callscript.AsBigInteger())
+                    //    return false;
 
                     //检测转出账户是否是黑洞账户,是就返回false
                     byte[] blackHoleAccount = getBlackHoleScript(); 
@@ -215,16 +215,16 @@ namespace SDTContract1
                     return GetTXInfo(txid);
                 }
                 if (operation == "setBlackHole")
-                {//设置手续费管理账户，只有超级管理员才有权限
-
+                {   //设置手续费管理账户
                     if (args.Length != 1) return false;
-
                     byte[] account = (byte[])args[0];
+                    //设置管理费账户,只有超管才有权限
+                    if (!Runtime.CheckWitness(SuperAdmin)) return false;
 
                     return SetBlackHoleAccount(account);
                 }
                 if (operation == "burn")
-                {//销毁
+                {   //销毁
                     if (args.Length != 2) return false;
 
                     byte[] from = (byte[])args[0];
@@ -233,7 +233,7 @@ namespace SDTContract1
                     
                     byte[] blackHoleAccount = getBlackHoleScript();
 
-                    if (from.AsBigInteger() != blackHoleAccount.AsBigInteger()) return false; //判断是否是黑洞账户,且只有黑洞账户才能执行销毁功能.
+                    if (from.AsBigInteger() != blackHoleAccount.AsBigInteger()) return false; //判断是否是手续费账户,且只有手续费账户才能执行销毁功能.
 
                     return Burn(from, value);
                 }
@@ -359,9 +359,7 @@ namespace SDTContract1
 
 
         public static bool SetBlackHoleAccount(byte[] account)
-        {   //设置管理费账户,只有超管才有权限
-            if (!Runtime.CheckWitness(SuperAdmin)) return false;
-
+        {   
             //不允许设置成管理员账户
             if (account.AsBigInteger() == SuperAdmin.AsBigInteger()) return false;
             
