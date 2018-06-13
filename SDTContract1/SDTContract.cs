@@ -148,7 +148,7 @@ namespace SDTContract1
             else if (Runtime.Trigger == TriggerType.Application)
             {
                 //入口函数取得callscript，获取调用地址
-                var callscript = ExecutionEngine.CallingScriptHash;
+                //var callscript = ExecutionEngine.CallingScriptHash;
                 //this is in nep5
                 if (operation == "totalSupply") return TotalSupply();
                 if (operation == "name") return Name();
