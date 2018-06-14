@@ -136,7 +136,7 @@ namespace SDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-06-14 09:30:10";
+            var magicstr = "2018-06-07 09:30:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -148,7 +148,7 @@ namespace SDTContract1
             else if (Runtime.Trigger == TriggerType.Application)
             {
                 //入口函数取得callscript，获取调用地址
-                //var callscript = ExecutionEngine.CallingScriptHash;
+                var callscript = ExecutionEngine.CallingScriptHash;
                 //this is in nep5
                 if (operation == "totalSupply") return TotalSupply();
                 if (operation == "name") return Name();
