@@ -140,10 +140,7 @@ namespace SDTContract1
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
-                if (SuperAdmin.Length == 20)
-                {
-                    return Runtime.CheckWitness(SuperAdmin);
-                }
+                return Runtime.CheckWitness(SuperAdmin); 
             }
             else if (Runtime.Trigger == TriggerType.Application)
             {
@@ -261,8 +258,6 @@ namespace SDTContract1
                         //判断调用者是否是跳板合约
                         byte[] jumpCallScript = getJumpCallScript();
                         if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
-
-                        if (!Runtime.CheckWitness(addr)) return false;
                         return mintToken(addr,value);
                     }
                     //管理员设置
@@ -297,12 +292,13 @@ namespace SDTContract1
 
         private static bool mintToken(byte[] addr, BigInteger value)
         {
+            if (value <= 0) return false;
+
             Transfer(null,addr,value);
+
             BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
-            if (current + value >= 0)
-            {
-                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current + value);
-            }
+            BigInteger remain = current + value;
+            Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, remain);
             return true;
         }
 
@@ -349,8 +345,6 @@ namespace SDTContract1
             if (v.Length == 0)
                 return null;
 
-
-            //老式实现方法
             TransferInfo info = new TransferInfo();
             int seek = 0;
             var fromlen = (int)v.Range(seek, 2).AsBigInteger();
@@ -403,13 +397,10 @@ namespace SDTContract1
          
         private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
         {
-            //因为testnet 还在2.6，限制
             TransferInfo info = new TransferInfo();
             info.from = from;
             info.to = to;
             info.value = value;
-
-            //用一个老式实现法
 
             //优化的拼包方法
             var data = info.from;
@@ -604,19 +595,15 @@ namespace SDTContract1
 
             if (!Runtime.CheckWitness(from)) return false;
 
+            //销毁自身金额
             Transfer(from, null, value);
 
-            operateTotalSupply(0 - value);
-            return true;
-        }
-
-        public static bool operateTotalSupply(BigInteger mount)
-        {
-            if (mount <= 0) return false;
+            //销毁总量
             BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
-            if (current + mount >= 0)
+            BigInteger remain = current - value;
+            if (remain >= 0 && remain < current)
             {
-                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current + mount);
+                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, remain);
             }
             return true;
         }
