@@ -178,10 +178,26 @@ namespace SDTContract1
                     if (!Runtime.CheckWitness(from))
                         return false;
 
+                    //如果有跳板调用，不让转
+                    if (ExecutionEngine.EntryScriptHash.AsBigInteger() != callscript.AsBigInteger())
+                        return false;
+
                     //检测转出账户是否是黑洞账户,是就返回false
                     byte[] blackHoleAccount = getBlackHoleScript(); 
                     if (blackHoleAccount.Length > 0 && from.AsBigInteger() == blackHoleAccount.AsBigInteger()) return false; 
 
+                    return Transfer(from, to, value);
+                }
+                //允许合约调用
+                if (operation == "transfer_app")
+                {
+                    if (args.Length != 3) return false;
+                    byte[] from = (byte[])args[0];
+                    byte[] to = (byte[])args[1];
+                    BigInteger value = (BigInteger)args[2];
+
+                    if (callscript.AsBigInteger() != from.AsBigInteger())
+                        return false;
                     return Transfer(from, to, value);
                 }
                 //允许赋权操作的金额
@@ -596,6 +612,7 @@ namespace SDTContract1
 
         public static bool operateTotalSupply(BigInteger mount)
         {
+            if (mount <= 0) return false;
             BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
             if (current + mount >= 0)
             {
