@@ -136,7 +136,7 @@ namespace SDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-06-07 09:30:10";
+            var magicstr = "2018-06-14 09:30:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -177,9 +177,6 @@ namespace SDTContract1
                     //没有from签名，不让转
                     if (!Runtime.CheckWitness(from))
                         return false;
-                    //如果有跳板调用，不让转
-                    //if (ExecutionEngine.EntryScriptHash.AsBigInteger() != callscript.AsBigInteger())
-                    //    return false;
 
                     //检测转出账户是否是黑洞账户,是就返回false
                     byte[] blackHoleAccount = getBlackHoleScript(); 
