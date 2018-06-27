@@ -34,21 +34,7 @@ namespace WNeoContract1
 
         //超级管理员账户
         private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7"); 
-        //private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AeNxzaA2ERKjpJfsEcuvZAWB3TvnXneo6p"); 
 
-        //nep5 func
-        public static BigInteger TotalSupply()
-        {
-            return Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
-        }
-        public static string Name()
-        {
-            return "W NEO";
-        }
-        public static string Symbol()
-        {
-            return "WNEO";
-        }
         //因子
         private const ulong factor = 100000000;
 
@@ -58,70 +44,6 @@ namespace WNeoContract1
         private const string TOTAL_SUPPLY = "totalSupply";
 
         private const string TOTAL_DESTORY = "totalDestory";
-
-        public static byte Decimals()
-        {
-            return 8;
-        }
-
-        /// <summary>
-        ///  Get the balance of the address
-        /// </summary>
-        /// <param name="address">
-        ///  address
-        /// </param>
-        /// <returns>
-        ///   account balance
-        /// </returns>
-        public static BigInteger BalanceOf(byte[] address)
-        {
-            return Storage.Get(Storage.CurrentContext, address).AsBigInteger();
-        }
-
-        /// <summary>
-        ///   Transfer a token balance to another account.
-        /// </summary>
-        /// <param name="from">
-        ///   The contract invoker.
-        /// </param>
-        /// <param name="to">
-        ///   The account to transfer to.
-        /// </param>
-        /// <param name="value">
-        ///   The amount to transfer.
-        /// </param>
-        /// <returns>
-        ///   Transaction Successful?
-        /// </returns>
-        public static bool Transfer(byte[] from, byte[] to, BigInteger value)
-        {
-
-            if (value <= 0) return false;
-
-            if (from == to) return true;
-
-            //付款方
-            if (from.Length > 0)
-            {
-                BigInteger from_value = Storage.Get(Storage.CurrentContext, from).AsBigInteger();
-                if (from_value < value) return false;
-                if (from_value == value)
-                    Storage.Delete(Storage.CurrentContext, from);
-                else
-                    Storage.Put(Storage.CurrentContext, from, from_value - value);
-            }
-            //收款方
-            if (to.Length > 0)
-            {
-                BigInteger to_value = Storage.Get(Storage.CurrentContext, to).AsBigInteger();
-                Storage.Put(Storage.CurrentContext, to, to_value + value);
-            }
-            //记录交易信息
-            setTxInfo(from, to, value);
-            //notify
-            Transferred(from, to, value);
-            return true;
-        }
 
 
         /// <summary>
@@ -140,7 +62,7 @@ namespace WNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-06-01 15:04:10";
+            var magicstr = "2018-06-27 15:04:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -204,15 +126,15 @@ namespace WNeoContract1
                 //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了
                 var callscript = ExecutionEngine.CallingScriptHash;
                 //this is in nep5
-                if (operation == "totalSupply") return TotalSupply();
-                if (operation == "name") return Name();
-                if (operation == "symbol") return Symbol();
-                if (operation == "decimals") return Decimals();
+                if (operation == "totalSupply") return totalSupply();
+                if (operation == "name") return name();
+                if (operation == "symbol") return symbol();
+                if (operation == "decimals") return decimals();
                 if (operation == "balanceOf")
                 {
                     if (args.Length != 1) return 0;
                     byte[] account = (byte[])args[0];
-                    return BalanceOf(account);
+                    return balanceOf(account);
                 }
                 if (operation == "transfer")
                 {
@@ -221,38 +143,35 @@ namespace WNeoContract1
                     byte[] to = (byte[])args[1];
                     if (from == to)
                         return true;
-                    if (from.Length == 0 || to.Length == 0)
+                    if (from.Length != 20 || to.Length != 20)
                         return false;
                     BigInteger value = (BigInteger)args[2];
                     //没有from签名，不让转
                     if (!Runtime.CheckWitness(from))
                         return false;
-                    //如果有跳板调用，不让转
-                    if (ExecutionEngine.EntryScriptHash.AsBigInteger() != callscript.AsBigInteger())
-                        return false;
-                    return Transfer(from, to, value);
+                    return transfer(from, to, value);
                 }
                 //允许赋权操作的金额
                 if (operation == "allowance")
                 {
                     //args[0]发起人账户   args[1]被授权账户
-                    return Allowance((byte[])args[0], (byte[])args[1]);
+                    return allowance((byte[])args[0], (byte[])args[1]);
                 }
                 if (operation == "approve")
                 {
                     //args[0]发起人账户  args[1]被授权账户   args[2]被授权金额
-                    return Approve((byte[])args[0], (byte[])args[1], (BigInteger)args[2]);
+                    return approve((byte[])args[0], (byte[])args[1], (BigInteger)args[2]);
                 }
                 if (operation == "transferFrom")
                 {
                     //args[0]转账账户  args[1]被授权账户 args[2]被转账账户   args[3]被授权金额
-                    return TransferFrom((byte[])args[0], (byte[])args[1], (byte[])args[2], (BigInteger)args[3]);
+                    return transferFrom((byte[])args[0], (byte[])args[1], (byte[])args[2], (BigInteger)args[3]);
                 }
                 if (operation == "getTXInfo")
                 {
                     if (args.Length != 1) return 0;
                     byte[] txid = (byte[])args[0];
-                    return GetTXInfo(txid);
+                    return getTXInfo(txid);
                 }
                 //退款
                 if (operation == "refund")
@@ -261,7 +180,7 @@ namespace WNeoContract1
                     byte[] who = (byte[])args[0];
                     if (!Runtime.CheckWitness(who))
                         return false;
-                    return Refund(who);
+                    return refund(who);
                 }
                 if (operation == "getRefundTarget")
                 {
@@ -275,25 +194,25 @@ namespace WNeoContract1
                     if (args.Length != 2) return false;
                     string key = (string)args[0];
                     BigInteger value = (BigInteger)args[1];
-                    return SetConfig(key, value);
+                    return setConfig(key, value);
                 }
                 //查询全局参数
                 if (operation == "getConfig")
                 {
                     if (args.Length != 1) return false;
                     string key = (string)args[0];
-                    return GetConfig(key);
+                    return getConfig(key);
                 }
                 if (operation == "mintTokens")
                 {
                     if (args.Length != 1) return 0;
                     string type = (string)args[0];
-                    return MintTokens(type);
+                    return mintTokens(type);
                 }
 
                 //W兑换P，销毁W
                 if (operation == "WNeoToPNeo")
-                { 
+                {
                     if (args.Length != 2) return false;
 
                     byte[] addr = (byte[])args[0];
@@ -302,12 +221,12 @@ namespace WNeoContract1
                     byte[] jumpCallScript = Storage.Get(Storage.CurrentContext, "callScript");
                     if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
 
-                    return  DestoryByP(addr,null,value); 
+                    return destoryByP(addr, null, value);
                 }
 
                 //PNeo兑换WNeo
                 if (operation == "PNeoToWNeo")
-                { 
+                {
                     if (args.Length != 2) return false;
 
                     byte[] addr = (byte[])args[0];
@@ -323,15 +242,8 @@ namespace WNeoContract1
 
                     //通过跳板合约调用P
                     if (!(bool)JumpCenterContract(operation, param)) return false;
-                    return Increase(addr, value);
+                    return increase(addr, value);
                 }
-                //查询当前存的金额数量
-                //if (operation == "currentMountByW")
-                //{
-                //    if (args.Length != 1) return false;
-                //    byte[] txid = (byte[])args[0];
-                //    return currentMountByW(txid);
-                //}
                 //设置跳板调用合约地址
                 if (operation == "setCallScript")
                 {
@@ -346,7 +258,7 @@ namespace WNeoContract1
                 //计算总抵押数
                 if (operation == "totalDestory")
                 {
-                    return TotalDestory();
+                    return totalDestory();
                 }
 
 
@@ -354,7 +266,87 @@ namespace WNeoContract1
             return false;
         }
 
-        private static BigInteger TotalDestory()
+        //nep5 func
+        public static BigInteger totalSupply()
+        {
+            return Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+        }
+        public static string name()
+        {
+            return "W NEO";
+        }
+        public static string symbol()
+        {
+            return "WNEO";
+        }
+        public static byte decimals()
+        {
+            return 8;
+        }
+
+        /// <summary>
+        ///  Get the balance of the address
+        /// </summary>
+        /// <param name="address">
+        ///  address
+        /// </param>
+        /// <returns>
+        ///   account balance
+        /// </returns>
+        public static BigInteger balanceOf(byte[] address)
+        {
+            if (address.Length != 20) return 0;
+            return Storage.Get(Storage.CurrentContext, address).AsBigInteger();
+        }
+
+        /// <summary>
+        ///   Transfer a token balance to another account.
+        /// </summary>
+        /// <param name="from">
+        ///   The contract invoker.
+        /// </param>
+        /// <param name="to">
+        ///   The account to transfer to.
+        /// </param>
+        /// <param name="value">
+        ///   The amount to transfer.
+        /// </param>
+        /// <returns>
+        ///   Transaction Successful?
+        /// </returns>
+        public static bool transfer(byte[] from, byte[] to, BigInteger value)
+        {
+
+            if (value <= 0) return false;
+
+            if (from == to) return true;
+
+            //付款方
+            if (from.Length > 0)
+            {
+                BigInteger from_value = Storage.Get(Storage.CurrentContext, from).AsBigInteger();
+                if (from_value < value) return false;
+                if (from_value == value)
+                    Storage.Delete(Storage.CurrentContext, from);
+                else
+                    Storage.Put(Storage.CurrentContext, from, from_value - value);
+            }
+            //收款方
+            if (to.Length > 0)
+            {
+                BigInteger to_value = Storage.Get(Storage.CurrentContext, to).AsBigInteger();
+                Storage.Put(Storage.CurrentContext, to, to_value + value);
+            }
+            //记录交易信息
+            setTxInfo(from, to, value);
+            //notify
+            Transferred(from, to, value);
+            return true;
+        }
+
+
+
+        private static BigInteger totalDestory()
         {
             return Storage.Get(Storage.CurrentContext,TOTAL_DESTORY).AsBigInteger();
         }
@@ -376,7 +368,7 @@ namespace WNeoContract1
         }
 
         //退款
-        public static bool Refund(byte[] who)
+        public static bool refund(byte[] who)
         {
             var tx = (Transaction)ExecutionEngine.ScriptContainer;
             var outputs = tx.GetOutputs();
@@ -394,7 +386,7 @@ namespace WNeoContract1
 
             //尝试销毁一定数量的代币
             var count = outputs[0].Value;
-            bool b = Transfer(who, null, count);
+            bool b = transfer(who, null, count);
             if (!b)
                 return false;
 
@@ -413,13 +405,11 @@ namespace WNeoContract1
             return target;
         }
 
-        public static TransferInfo GetTXInfo(byte[] txid)
+        public static TransferInfo getTXInfo(byte[] txid)
         {
             byte[] v = Storage.Get(Storage.CurrentContext, txid);
             if (v.Length == 0)
                 return null;
-
-            //新式实现方法只要一行
             return (TransferInfo)Helper.Deserialize(v);
         }
 
@@ -435,7 +425,7 @@ namespace WNeoContract1
             Storage.Put(Storage.CurrentContext, txid, txinfo);
         }
 
-        public static bool MintTokens(string type)
+        public static bool mintTokens(string type)
         {
             var tx = (Transaction)ExecutionEngine.ScriptContainer;
              
@@ -475,15 +465,15 @@ namespace WNeoContract1
             operateTotalSupply(realValue);
 
             operateTotalDestory(who,realValue);
-            return Transfer(null, who, realValue);
+            return transfer(null, who, realValue);
         }
 
         private static BigInteger getRealValue(string type, ulong value)
         {
             if (value <= 0) return 0;
             if (type == "gas") {
-                BigInteger neoPrice = GetConfig(CONFIG_PRICE_NEO);
-                BigInteger gasPrice = GetConfig(CONFIG_PRICE_GAS);
+                BigInteger neoPrice = getConfig(CONFIG_PRICE_NEO);
+                BigInteger gasPrice = getConfig(CONFIG_PRICE_GAS);
                 if (neoPrice == 0 || gasPrice == 0) {
                     return value * 2/10;
                 }
@@ -522,23 +512,6 @@ namespace WNeoContract1
         }
 
         /// <summary>
-        ///   Init the sdt tokens to the SuperAdmin account，only once
-        /// </summary>
-        /// <returns>
-        ///   Transaction Successful?
-        /// </returns>
-        public static bool Init()
-        {
-            if (!Runtime.CheckWitness(SuperAdmin)) return false;
-            byte[] total_supply = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY);
-            if (total_supply.Length != 0) return false;
-            Storage.Put(Storage.CurrentContext, SuperAdmin, IntToBytes(TOTAL_AMOUNT));
-            Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, TOTAL_AMOUNT);
-            Transferred(null, SuperAdmin, TOTAL_AMOUNT);
-            return true;
-        }
-
-        /// <summary>
         ///   Return the amount of the tokens that the spender could transfer from the owner acount
         /// </summary>
         /// <param name="owner">
@@ -550,7 +523,7 @@ namespace WNeoContract1
         /// <returns>
         ///   The amount to grant TransferFrom access for
         /// </returns>
-        public static BigInteger Allowance(byte[] owner, byte[] spender)
+        public static BigInteger allowance(byte[] owner, byte[] spender)
         {
             return Storage.Get(Storage.CurrentContext, owner.Concat(spender)).AsBigInteger();
         }
@@ -570,7 +543,7 @@ namespace WNeoContract1
         /// <returns>
         ///   Transaction Successful?
         /// </returns>
-        public static bool Approve(byte[] owner, byte[] spender, BigInteger amount)
+        public static bool approve(byte[] owner, byte[] spender, BigInteger amount)
         {
             if (owner.Length != 20 || spender.Length != 20) return false;
             if (!Runtime.CheckWitness(owner)) return false;
@@ -605,7 +578,7 @@ namespace WNeoContract1
         /// <returns>
         ///   Transaction successful?
         /// </returns>
-        public static bool TransferFrom(byte[] owner, byte[] spender, byte[] to, BigInteger amount)
+        public static bool transferFrom(byte[] owner, byte[] spender, byte[] to, BigInteger amount)
         {
             if (owner.Length != 20 || spender.Length != 20 || to.Length != 20) return false;
             if (!Runtime.CheckWitness(spender)) return false;
@@ -643,24 +616,24 @@ namespace WNeoContract1
         }
 
         //增发货币
-        public static bool Increase(byte[] to, BigInteger value)
+        public static bool increase(byte[] to, BigInteger value)
         {
             if (value <= 0) return false;
             if (!Runtime.CheckWitness(to)) return false;
 
-            Transfer(null, to, value);
+            transfer(null, to, value);
 
             operateTotalSupply(value);
             return true;
         }
 
         //销毁货币
-        public static bool DestoryByP(byte[] from,byte[] txid,BigInteger value)
+        public static bool destoryByP(byte[] from,byte[] txid,BigInteger value)
         {
             if (value <= 0) return false;
             if (!Runtime.CheckWitness(from)) return false;
 
-            Transfer(from, null, value);
+            transfer(from, null, value);
 
             BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
             if (current - value >= 0)
@@ -681,13 +654,13 @@ namespace WNeoContract1
             return true;
         }
 
-        private static BigInteger GetConfig(string key)
+        private static BigInteger getConfig(string key)
         {
             if (key == null || key == "") return 0;
             return Storage.Get(Storage.CurrentContext, key.AsByteArray()).AsBigInteger();
         }
 
-        private static Boolean SetConfig(string key, BigInteger value)
+        private static Boolean setConfig(string key, BigInteger value)
         {
             if (key == null || key == "") return false;
             if (!Runtime.CheckWitness(SuperAdmin)) return false;

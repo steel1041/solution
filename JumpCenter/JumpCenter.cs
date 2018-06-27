@@ -81,9 +81,7 @@ namespace JumpCenter
                 return setCallScript(type,callScript);
 
             }
-
             var callscript = ExecutionEngine.CallingScriptHash;
-
             //P兑换W，P销毁功能,W发起
             if (method == "PNeoToWNeo")
             {

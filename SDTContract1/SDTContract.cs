@@ -21,7 +21,7 @@ namespace SDTContract1
 
         //超级管理员账户
         //testnet账户  AaBmSJ4Beeg2AeKczpXk89DnmVrPn3SHkU
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
+        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AR8KzAqQj3u2BQrfMotWkQkSsrg6gYbLdp");
 
         //nep5 func
         public static BigInteger TotalSupply()
