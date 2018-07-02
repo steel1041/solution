@@ -151,6 +151,18 @@ namespace WNeoContract1
                         return false;
                     return transfer(from, to, value);
                 }
+                //允许合约调用
+                if (operation == "transfer_contract")
+                {
+                    if (args.Length != 3) return false;
+                    byte[] from = (byte[])args[0];
+                    byte[] to = (byte[])args[1];
+                    BigInteger value = (BigInteger)args[2];
+
+                    if (callscript.AsBigInteger() != from.AsBigInteger())
+                        return false;
+                    return transfer(from, to, value);
+                }
                 //允许赋权操作的金额
                 if (operation == "allowance")
                 {

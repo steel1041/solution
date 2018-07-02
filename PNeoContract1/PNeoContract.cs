@@ -83,14 +83,23 @@ namespace PNeoContract1
                     byte[] to = (byte[])args[1];
                     if (from == to)
                         return true;
-                    if (from.Length == 0 || to.Length == 0)
+                    if (from.Length != 20 || to.Length != 20)
                         return false;
                     BigInteger value = (BigInteger)args[2];
                     //没有from签名，不让转
                     if (!Runtime.CheckWitness(from))
                         return false;
-                    //如果有跳板调用，不让转
-                    if (ExecutionEngine.EntryScriptHash.AsBigInteger() != callscript.AsBigInteger())
+                    return transfer(from, to, value);
+                }
+                //允许合约调用
+                if (operation == "transfer_contract")
+                {
+                    if (args.Length != 3) return false;
+                    byte[] from = (byte[])args[0];
+                    byte[] to = (byte[])args[1];
+                    BigInteger value = (BigInteger)args[2];
+
+                    if (callscript.AsBigInteger() != from.AsBigInteger())
                         return false;
                     return transfer(from, to, value);
                 }

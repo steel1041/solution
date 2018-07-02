@@ -81,8 +81,7 @@ namespace SDUSDTContract1
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
-                return Runtime.CheckWitness(SuperAdmin);
-
+                return false;
             }
             else if (Runtime.Trigger == TriggerType.Application)
             {
@@ -99,7 +98,6 @@ namespace SDUSDTContract1
                     byte[] account = (byte[])args[0];
                     return balanceOf(account);
                 }
-
                 if (operation == "transfer")
                 {
                     if (args.Length != 3) return false;
@@ -107,14 +105,23 @@ namespace SDUSDTContract1
                     byte[] to = (byte[])args[1];
                     if (from == to)
                         return true;
-                    if (from.Length == 0 || to.Length == 0)
+                    if (from.Length != 20 || to.Length != 20)
                         return false;
                     BigInteger value = (BigInteger)args[2];
                     //没有from签名，不让转
                     if (!Runtime.CheckWitness(from))
                         return false;
-                    //如果有跳板调用，不让转
-                    if (ExecutionEngine.EntryScriptHash.AsBigInteger() != callscript.AsBigInteger())
+                    return transfer(from, to, value);
+                }
+                //允许合约调用
+                if (operation == "transfer_contract")
+                {
+                    if (args.Length != 3) return false;
+                    byte[] from = (byte[])args[0];
+                    byte[] to = (byte[])args[1];
+                    BigInteger value = (BigInteger)args[2];
+
+                    if (callscript.AsBigInteger() != from.AsBigInteger())
                         return false;
                     return transfer(from, to, value);
                 }
@@ -157,14 +164,14 @@ namespace SDUSDTContract1
                     return getConfig(key);
                 }
                 //创建SAR记录
-                if (operation == "openSAR")
+                if (operation == "openSAR4C")
                 {
                     if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
                     return openSAR(addr);
                 }
                 //查询债仓记录
-                if (operation == "getSAR")
+                if (operation == "getSAR4C")
                 {
                     if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
@@ -178,45 +185,45 @@ namespace SDUSDTContract1
                     return getSARTxInfo(txid);
                 }
                 //锁仓PNeo
-                if (operation == "lock")
+                if (operation == "reserve")
                 {
                     if (args.Length != 2) return false;
                     byte[] addr = (byte[])args[0];
                     BigInteger mount = (BigInteger)args[1];
-                    return lockMount(addr, mount);
+                    return reserve(addr, mount);
                 }
                 //提取SDUSDT
-                if (operation == "draw")
+                if (operation == "expande")
                 {
                     if (args.Length != 2) return false;
 
                     byte[] addr = (byte[])args[0];
-                    BigInteger drawMount = (BigInteger)args[1];
-                    return draw(addr, drawMount);
+                    BigInteger mount = (BigInteger)args[1];
+                    return expande(addr, mount);
                 }
                 //释放未被兑换的PNEO
-                if (operation == "free")
+                if (operation == "withdraw")
                 {
                     if (args.Length != 2) return false;
 
                     byte[] addr = (byte[])args[0];
-                    BigInteger freeMount = (BigInteger)args[1];
-                    return free(addr, freeMount);
+                    BigInteger mount = (BigInteger)args[1];
+                    return withdraw(addr, mount);
                 }
                 //赎回质押的PNEO，用SDUSD去兑换
-                if (operation == "wipe")
+                if (operation == "contract")
                 {
                     if (args.Length != 2) return false;
                     byte[] addr = (byte[])args[0];
-                    BigInteger wipeMount = (BigInteger)args[1];
-                    return wipe(addr, wipeMount);
+                    BigInteger mount = (BigInteger)args[1];
+                    return contract(addr, mount);
                 }
                 //关闭在仓
-                if (operation == "shut")
+                if (operation == "close")
                 {
                     if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
-                    return shut(addr);
+                    return close(addr);
                 }
                 //强制关闭在仓，由别人发起
                 if (operation == "bite")
@@ -301,6 +308,7 @@ namespace SDUSDTContract1
         /// </returns>
         public static BigInteger balanceOf(byte[] address)
         {
+            if (address.Length != 20) return 0;
             return Storage.Get(Storage.CurrentContext, address).AsBigInteger();
         }
 
@@ -454,7 +462,7 @@ namespace SDUSDTContract1
 
         private static SARTransferInfo getSAR(byte[] addr)
         {
-            //CDP是否存在
+            //SAR是否存在
             var key = addr.Concat(ConvertN(0));
             byte[] sar = Storage.Get(Storage.CurrentContext, key);
             if (sar.Length == 0)
@@ -558,8 +566,9 @@ namespace SDUSDTContract1
             return true;
         }
 
-        private static Boolean shut(byte[] addr)
+        private static Boolean close(byte[] addr)
         {
+            if (addr.Length != 20) return false;
             if (!Runtime.CheckWitness(addr)) return false;
             //CDP是否存在
             var key = addr.Concat(ConvertN(0));
@@ -608,9 +617,10 @@ namespace SDUSDTContract1
             return true;
         }
 
-        private static Boolean wipe(byte[] addr, BigInteger wipeMount)
+        private static Boolean contract(byte[] addr, BigInteger mount)
         {
-            if (wipeMount <= 0) return false;
+            if (addr.Length != 20) return false;
+            if (mount <= 0) return false;
             if (!Runtime.CheckWitness(addr)) return false;
 
             //CDP是否存在
@@ -625,14 +635,14 @@ namespace SDUSDTContract1
             BigInteger hasDrawed = cdpInfo.hasDrawed;
 
             //SD赎回量要小于已经在仓的
-            if (wipeMount > hasDrawed) return false;
+            if (mount > hasDrawed) return false;
 
             //减少金额
-            transfer(addr,null, wipeMount);
+            transfer(addr,null, mount);
             //减少总量
-            operateTotalSupply(0-wipeMount);
+            operateTotalSupply(0- mount);
 
-            cdpInfo.hasDrawed = hasDrawed - wipeMount;
+            cdpInfo.hasDrawed = hasDrawed - mount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(cdpInfo));
 
 
@@ -643,7 +653,7 @@ namespace SDUSDTContract1
             detail.cdpTxid = cdpInfo.txid;
             detail.txid = txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_WIPE;
-            detail.operated = wipeMount;
+            detail.operated = mount;
             detail.hasLocked = locked;
             detail.hasDrawed = hasDrawed;
             Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
@@ -651,20 +661,20 @@ namespace SDUSDTContract1
         }
 
         /// <summary>
-        ///   This method is free pneo asset.
+        ///   This method is withdraw pneo asset.
         /// </summary>
         /// <param name="addr">
         ///     The address being invoked.
         /// </param>
-        /// <param name="freeMount">
+        /// <param name="mount">
         ///     The mount need free,it's pneo.
         /// </param>
         /// <returns>
         ///     Return Boolean
         /// </returns>
-        private static Boolean free(byte[] addr, BigInteger freeMount)
+        private static Boolean withdraw(byte[] addr, BigInteger mount)
         {
-            if (freeMount <= 0) return false;
+            if (mount <= 0) return false;
             if (!Runtime.CheckWitness(addr)) return false;
 
             //CDP是否存在
@@ -687,18 +697,18 @@ namespace SDUSDTContract1
             BigInteger hasDrawPNeo = hasDrawed * rate / (100 * neoPrice);
 
             //释放的总量大于已经剩余，不能操作
-            if (freeMount > locked - hasDrawPNeo) return false;
+            if (mount > locked - hasDrawPNeo) return false;
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
 
             object[] param = new object[3];
             param[0] = addr;
             param[1] = txid;
-            param[2] = freeMount;
+            param[2] = mount;
             if (!(bool)JumpCenterContract("increase", param)) return false;
 
             //重新设置锁定量
-            cdpInfo.locked = locked - freeMount;
+            cdpInfo.locked = locked - mount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(cdpInfo));
 
             //记录交易详细数据
@@ -707,8 +717,8 @@ namespace SDUSDTContract1
             detail.cdpTxid = cdpInfo.txid;
             detail.txid = txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_FREE;
-            detail.operated = freeMount;
-            detail.hasLocked = locked - freeMount;
+            detail.operated = mount;
+            detail.hasLocked = locked - mount;
             detail.hasDrawed = hasDrawed;
             Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
             return true;
@@ -738,7 +748,7 @@ namespace SDUSDTContract1
             return true;
         }
 
-        private static Boolean lockMount(byte[] addr, BigInteger lockMount)
+        private static Boolean reserve(byte[] addr, BigInteger lockMount)
         {
             if (lockMount <= 0) return false;
             if (!Runtime.CheckWitness(addr)) return false;
@@ -781,7 +791,7 @@ namespace SDUSDTContract1
         }
 
 
-        private static Boolean draw(byte[] addr, BigInteger drawMount)
+        private static Boolean expande(byte[] addr, BigInteger drawMount)
         {
             if (drawMount <= 0) return false;
             if (!Runtime.CheckWitness(addr)) return false;
