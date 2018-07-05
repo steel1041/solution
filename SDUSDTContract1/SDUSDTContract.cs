@@ -61,6 +61,10 @@ namespace SDUSDTContract1
             TRANSACTION_TYPE_GIVE,//转移所有权
         }
 
+        /*存储结构有     
+        * map(address,balance)   存储地址余额   key = 0x11+address
+        * map(txid,TransferInfo) 存储交易详情   key = 0x13+txid
+        */
         /// <summary>
         ///   This smart contract is designed to implement NEP-5
         ///   Parameter List: 0710
@@ -247,7 +251,7 @@ namespace SDUSDTContract1
                     byte[] addr = (byte[])args[0];
                     return redeem(addr);
                 }
-                //转移CDP所有权给其它地址
+                //转移SAR所有权给其它地址
                 if (operation == "give")
                 {
                     if (args.Length != 2) return false;
@@ -309,7 +313,7 @@ namespace SDUSDTContract1
         public static BigInteger balanceOf(byte[] address)
         {
             if (address.Length != 20) return 0;
-            return Storage.Get(Storage.CurrentContext, address).AsBigInteger();
+            return Storage.Get(Storage.CurrentContext, new byte[] { 0x11 }.Concat(address)).AsBigInteger();
         }
 
         /// <summary>
@@ -333,22 +337,23 @@ namespace SDUSDTContract1
             if (value <= 0) return false;
 
             if (from == to) return true;
-
+            var fromKey = new byte[] { 0x11 }.Concat(from);
+            var toKey = new byte[] { 0x11 }.Concat(to);
             //付款方
             if (from.Length > 0)
             {
-                BigInteger from_value = Storage.Get(Storage.CurrentContext, from).AsBigInteger();
+                BigInteger from_value = Storage.Get(Storage.CurrentContext, fromKey).AsBigInteger();
                 if (from_value < value) return false;
                 if (from_value == value)
-                    Storage.Delete(Storage.CurrentContext, from);
+                    Storage.Delete(Storage.CurrentContext, fromKey);
                 else
-                    Storage.Put(Storage.CurrentContext, from, from_value - value);
+                    Storage.Put(Storage.CurrentContext, fromKey, from_value - value);
             }
             //收款方
             if (to.Length > 0)
             {
-                BigInteger to_value = Storage.Get(Storage.CurrentContext, to).AsBigInteger();
-                Storage.Put(Storage.CurrentContext, to, to_value + value);
+                BigInteger to_value = Storage.Get(Storage.CurrentContext, toKey).AsBigInteger();
+                Storage.Put(Storage.CurrentContext, toKey, to_value + value);
             }
             //记录交易信息
             setTxInfo(from, to, value);
@@ -879,7 +884,7 @@ namespace SDUSDTContract1
 
         public static TransferInfo getTXInfo(byte[] txid)
         {
-            byte[] v = Storage.Get(Storage.CurrentContext, txid);
+            byte[] v = Storage.Get(Storage.CurrentContext, new byte[] { 0x13 }.Concat(txid));
             if (v.Length == 0)
                 return null;
             //新式实现方法只要一行
@@ -895,7 +900,8 @@ namespace SDUSDTContract1
             byte[] txinfo = Helper.Serialize(info);
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            Storage.Put(Storage.CurrentContext, txid, txinfo);
+            var keyTxid = new byte[] { 0x13 }.Concat(txid);
+            Storage.Put(Storage.CurrentContext, keyTxid, txinfo);
         }
 
         public class TransferInfo
@@ -1027,8 +1033,8 @@ namespace SDUSDTContract1
             if (owner.Length != 20 || spender.Length != 20 || to.Length != 20) return false;
             if (!Runtime.CheckWitness(spender)) return false;
             BigInteger allowance = Storage.Get(Storage.CurrentContext, owner.Concat(spender)).AsBigInteger();
-            BigInteger fromOrigBalance = Storage.Get(Storage.CurrentContext, owner).AsBigInteger();
-            BigInteger toOrigBalance = Storage.Get(Storage.CurrentContext, to).AsBigInteger();
+            BigInteger fromOrigBalance = Storage.Get(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner)).AsBigInteger();
+            BigInteger toOrigBalance = Storage.Get(Storage.CurrentContext, new byte[] { 0x11 }.Concat(to)).AsBigInteger();
 
             if (amount >= 0 &&
                 allowance >= amount &&
@@ -1045,14 +1051,14 @@ namespace SDUSDTContract1
 
                 if (fromOrigBalance - amount == 0)
                 {
-                    Storage.Delete(Storage.CurrentContext, owner);
+                    Storage.Delete(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner));
                 }
                 else
                 {
-                    Storage.Put(Storage.CurrentContext, owner, IntToBytes(fromOrigBalance - amount));
+                    Storage.Put(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner), IntToBytes(fromOrigBalance - amount));
                 }
 
-                Storage.Put(Storage.CurrentContext, to, IntToBytes(toOrigBalance + amount));
+                Storage.Put(Storage.CurrentContext, new byte[] { 0x11 }.Concat(to), IntToBytes(toOrigBalance + amount));
                 Transferred(owner, to, amount);
                 return true;
             }
