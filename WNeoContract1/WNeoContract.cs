@@ -10,6 +10,13 @@ namespace WNeoContract1
 {
     public class WNeoContract : SmartContract
     {
+        /*存储结构有     
+        * map(address,balance)   存储地址余额   key = 0x11+address
+        * map(txid,TransferInfo) 存储交易详情   key = 0x13+txid
+        * map(str,address)       存储合约地址   key = 0x14+str
+        * map(coinid,address)    存储赎回信息   key = txid+ new byte[]{0,0}
+       */
+
         //NEO Asset
         private static readonly byte[] neo_asset_id = { 155, 124, 255, 218, 166, 116, 190, 174, 15, 147, 14, 190, 96, 133, 175, 144, 147, 229, 254, 86, 179, 74, 92, 34, 12, 205, 207, 110, 252, 51, 111, 197 };
 
@@ -20,13 +27,11 @@ namespace WNeoContract1
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
-        [DisplayName("approve")]
-        public static event Action<byte[], byte[], BigInteger> Approved;
 
         [DisplayName("onRefundTarget")]
         public static event Action<byte[],byte[]> onRefundTarget;
 
-
+        public delegate object NEP5Contract(string method, object[] args);
 
         [Appcall("95e6b39d3557f5ba5ba59fab178f6de3c24e3d04")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
@@ -36,6 +41,15 @@ namespace WNeoContract1
 
         //配置参数-GAS市场价格
         private const string CONFIG_PRICE_GAS = "gas_price";
+
+        //合约收款账户
+        private const string STORAGE_ACCOUNT = "storage_account";
+
+        //SDS合约账户
+        private const string SDS_ACCOUNT = "sds_account";
+
+        //Oracle合约账户
+        private const string ORACLE_ACCOUNT = "oracle_account";
 
         //管理员账户
         private static readonly byte[] admin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7"); 
@@ -70,7 +84,7 @@ namespace WNeoContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-06-27 15:04:10";
+            var magicstr = "2018-08-21 15:04:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -166,27 +180,14 @@ namespace WNeoContract1
                     byte[] from = (byte[])args[0];
                     byte[] to = (byte[])args[1];
                     BigInteger value = (BigInteger)args[2];
+                    if (from.Length != 20 || to.Length != 20)
+                        return false;
 
                     if (callscript.AsBigInteger() != from.AsBigInteger())
                         return false;
                     return transfer(from, to, value);
                 }
-                //允许赋权操作的金额
-                if (operation == "allowance")
-                {
-                    //args[0]发起人账户   args[1]被授权账户
-                    return allowance((byte[])args[0], (byte[])args[1]);
-                }
-                if (operation == "approve")
-                {
-                    //args[0]发起人账户  args[1]被授权账户   args[2]被授权金额
-                    return approve((byte[])args[0], (byte[])args[1], (BigInteger)args[2]);
-                }
-                if (operation == "transferFrom")
-                {
-                    //args[0]转账账户  args[1]被授权账户 args[2]被转账账户   args[3]被授权金额
-                    return transferFrom((byte[])args[0], (byte[])args[1], (byte[])args[2], (BigInteger)args[3]);
-                }
+
                 if (operation == "getTXInfo")
                 {
                     if (args.Length != 1) return 0;
@@ -223,58 +224,69 @@ namespace WNeoContract1
                     string key = (string)args[0];
                     return getConfig(key);
                 }
+                if (operation == "setAccount")
+                {
+                    if (args.Length != 2) return false;
+                    string key = (string)args[0];
+                    byte[] address = (byte[])args[1];
+                    if (!Runtime.CheckWitness(admin)) return false;
+
+                    return setAccount(key, address);
+                }
                 if (operation == "mintTokens")
                 {
                     if (args.Length != 1) return 0;
                     string type = (string)args[0];
-                    return mintTokens(type);
+
+                    byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, new byte[] { 0x14 }.Concat(ORACLE_ACCOUNT.AsByteArray()));
+                    return mintTokens(oracleAssetID,type);
                 }
 
                 //W兑换P，销毁W
-                if (operation == "WNeoToPNeo")
-                {
-                    if (args.Length != 2) return false;
+                //if (operation == "WNeoToPNeo")
+                //{
+                //    if (args.Length != 2) return false;
 
-                    byte[] addr = (byte[])args[0];
-                    BigInteger value = (BigInteger)args[1];
-                    //判断调用者是否是跳板合约
-                    byte[] jumpCallScript = Storage.Get(Storage.CurrentContext, "callScript");
-                    if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
+                //    byte[] addr = (byte[])args[0];
+                //    BigInteger value = (BigInteger)args[1];
+                //    //判断调用者是否是跳板合约
+                //    byte[] jumpCallScript = Storage.Get(Storage.CurrentContext, "callScript");
+                //    if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
 
-                    return destoryByP(addr, null, value);
-                }
+                //    return destoryByP(addr, null, value);
+                //}
 
                 //PNeo兑换WNeo
-                if (operation == "PNeoToWNeo")
-                {
-                    if (args.Length != 2) return false;
+                //if (operation == "PNeoToWNeo")
+                //{
+                //    if (args.Length != 2) return false;
 
-                    byte[] addr = (byte[])args[0];
-                    BigInteger value = (BigInteger)args[1];
+                //    byte[] addr = (byte[])args[0];
+                //    BigInteger value = (BigInteger)args[1];
 
-                    if (!Runtime.CheckWitness(addr)) return false;
+                //    if (!Runtime.CheckWitness(addr)) return false;
 
-                    var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-                    object[] param = new object[3];
-                    param[0] = addr;
-                    param[1] = txid;
-                    param[2] = value;
+                //    var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+                //    object[] param = new object[3];
+                //    param[0] = addr;
+                //    param[1] = txid;
+                //    param[2] = value;
 
-                    //通过跳板合约调用P
-                    if (!(bool)JumpCenterContract(operation, param)) return false;
-                    return increase(addr, value);
-                }
+                //    //通过跳板合约调用P
+                //    if (!(bool)JumpCenterContract(operation, param)) return false;
+                //    return increase(addr, value);
+                //}
                 //设置跳板调用合约地址
-                if (operation == "setCallScript")
-                {
-                    if (args.Length != 1) return false;
-                    byte[] callScript = (byte[])args[0];
+                //if (operation == "setCallScript")
+                //{
+                //    if (args.Length != 1) return false;
+                //    byte[] callScript = (byte[])args[0];
 
-                    //超级管理员设置跳板合约地址
-                    if (!Runtime.CheckWitness(admin)) return false;
-                    return setCallScript(callScript);
+                //    //超级管理员设置跳板合约地址
+                //    if (!Runtime.CheckWitness(admin)) return false;
+                //    return setCallScript(callScript);
 
-                }
+                //}
                 //计算总抵押数
                 if (operation == "totalDestory")
                 {
@@ -450,7 +462,7 @@ namespace WNeoContract1
             Storage.Put(Storage.CurrentContext, keyTxid, txinfo);
         }
 
-        public static bool mintTokens(string type)
+        public static bool mintTokens(byte[] oracleAssetID,string type)
         {
             var tx = (Transaction)ExecutionEngine.ScriptContainer;
              
@@ -484,7 +496,7 @@ namespace WNeoContract1
                 }
             }
             //获取实际兑换量
-            BigInteger realValue = getRealValue(type,value);
+            BigInteger realValue = getRealValue(oracleAssetID,type, value);
 
             //改变总量
             operateTotalSupply(realValue);
@@ -493,12 +505,29 @@ namespace WNeoContract1
             return transfer(null, who, realValue);
         }
 
-        private static BigInteger getRealValue(string type, ulong value)
+        private static BigInteger getRealValue(byte[] oracleAssetID,string type, ulong value)
         {
             if (value <= 0) return 0;
             if (type == "gas") {
-                BigInteger neoPrice = getConfig(CONFIG_PRICE_NEO);
-                BigInteger gasPrice = getConfig(CONFIG_PRICE_GAS);
+                BigInteger neoPrice = 0; 
+                {
+                    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                    object[] arg = new object[1];
+                    arg[0] = CONFIG_PRICE_NEO;
+                    BigInteger re = (BigInteger)OracleContract("getPrice", arg);
+                    if (re != 0)
+                        neoPrice = re;
+                }
+
+                BigInteger gasPrice = 0;
+                {
+                    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                    object[] arg = new object[1];
+                    arg[0] = CONFIG_PRICE_GAS;
+                    BigInteger re = (BigInteger)OracleContract("getPrice", arg);
+                    if (re != 0)
+                        gasPrice = re;
+                }
                 if (neoPrice == 0 || gasPrice == 0) {
                     return value * 2/10;
                 }
@@ -534,110 +563,6 @@ namespace WNeoContract1
             if (v.Length < 2)
                 v = v.Concat(new byte[1] { 0x00 });
             return v;
-        }
-
-        /// <summary>
-        ///   Return the amount of the tokens that the spender could transfer from the owner acount
-        /// </summary>
-        /// <param name="owner">
-        ///   The account to invoke the Approve method
-        /// </param>
-        /// <param name="spender">
-        ///   The account to grant TransferFrom access to.
-        /// </param>
-        /// <returns>
-        ///   The amount to grant TransferFrom access for
-        /// </returns>
-        public static BigInteger allowance(byte[] owner, byte[] spender)
-        {
-            return Storage.Get(Storage.CurrentContext, owner.Concat(spender)).AsBigInteger();
-        }
-
-        /// <summary>
-        ///   Approve another account to transfer amount tokens from the owner acount by transferForm
-        /// </summary>
-        /// <param name="owner">
-        ///   The account to invoke approve.
-        /// </param>
-        /// <param name="spender">
-        ///   The account to grant TransferFrom access to.
-        /// </param>
-        /// <param name="amount">
-        ///   The amount to grant TransferFrom access for.
-        /// </param>
-        /// <returns>
-        ///   Transaction Successful?
-        /// </returns>
-        public static bool approve(byte[] owner, byte[] spender, BigInteger amount)
-        {
-            if (owner.Length != 20 || spender.Length != 20) return false;
-            if (!Runtime.CheckWitness(owner)) return false;
-            if (owner == spender) return true;
-            if (amount < 0) return false;
-            if (amount == 0)
-            {
-                Storage.Delete(Storage.CurrentContext, owner.Concat(spender));
-                Approved(owner, spender, amount);
-                return true;
-            }
-            Storage.Put(Storage.CurrentContext, owner.Concat(spender), amount);
-            Approved(owner, spender, amount);
-            return true;
-        }
-
-        /// <summary>
-        ///   Transfer an amount from the owner account to the to acount if the spender has been approved to transfer the requested amount
-        /// </summary>
-        /// <param name="owner">
-        ///   The account to transfer a balance from.
-        /// </param>
-        /// <param name="spender">
-        ///   The contract invoker.
-        /// </param>
-        /// <param name="to">
-        ///   The account to transfer a balance to.
-        /// </param>
-        /// <param name="amount">
-        ///   The amount to transfer
-        /// </param>
-        /// <returns>
-        ///   Transaction successful?
-        /// </returns>
-        public static bool transferFrom(byte[] owner, byte[] spender, byte[] to, BigInteger amount)
-        {
-            if (owner.Length != 20 || spender.Length != 20 || to.Length != 20) return false;
-            if (!Runtime.CheckWitness(spender)) return false;
-            BigInteger allowance = Storage.Get(Storage.CurrentContext, owner.Concat(spender)).AsBigInteger();
-            BigInteger fromOrigBalance = Storage.Get(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner)).AsBigInteger();
-            BigInteger toOrigBalance = Storage.Get(Storage.CurrentContext, new byte[] { 0x11 }.Concat(to)).AsBigInteger();
-
-            if (amount >= 0 &&
-                allowance >= amount &&
-                fromOrigBalance >= amount)
-            {
-                if (allowance - amount == 0)
-                {
-                    Storage.Delete(Storage.CurrentContext, owner.Concat(spender));
-                }
-                else
-                {
-                    Storage.Put(Storage.CurrentContext, owner.Concat(spender), IntToBytes(allowance - amount));
-                }
-
-                if (fromOrigBalance - amount == 0)
-                {
-                    Storage.Delete(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner));
-                }
-                else
-                {
-                    Storage.Put(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner), IntToBytes(fromOrigBalance - amount));
-                }
-
-                Storage.Put(Storage.CurrentContext, new byte[] { 0x11 }.Concat(to), IntToBytes(toOrigBalance + amount));
-                Transferred(owner, to, amount);
-                return true;
-            }
-            return false;
         }
 
         //增发货币
@@ -690,6 +615,16 @@ namespace WNeoContract1
             if (key == null || key == "") return false;
             if (!Runtime.CheckWitness(admin)) return false;
             Storage.Put(Storage.CurrentContext, key.AsByteArray(), value);
+            return true;
+        }
+
+        public static bool setAccount(string key, byte[] address)
+        {
+            if (key == null || key == "") return false;
+
+            if (address.Length != 20) return false;
+            Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(key.AsByteArray()), address);
+
             return true;
         }
 

@@ -8,8 +8,15 @@ using Neo.SmartContract.Framework.Services.System;
 
 namespace SDUSDTContract1
 {
-    public class SDUSDTContract : SmartContract
+    public class SDUSDContract : SmartContract
     {
+        /*存储结构有     
+        * map(address,balance)   存储地址余额   key = 0x11+address
+        * map(txid,TransferInfo) 存储交易详情   key = 0x13+txid
+        * map(address,SAR)   存储SAR信息        key = 0x12+address
+        * map(txid,SARDetail)存储SAR详细信息    key = 0x14+txid
+        * map(str,address)      存储配置信息    key = 0x15+str
+        */
         //NEO Asset
         private static readonly byte[] neo_asset_id = { 155, 124, 255, 218, 166, 116, 190, 174, 15, 147, 14, 190, 96, 133, 175, 144, 147, 229, 254, 86, 179, 74, 92, 34, 12, 205, 207, 110, 252, 51, 111, 197 };
 
@@ -18,12 +25,14 @@ namespace SDUSDTContract1
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
-        [DisplayName("approve")]
-        public static event Action<byte[], byte[], BigInteger> Approved;
+        /* addr,sartxid,txid,type,operated*/
+        [DisplayName("sarOperator4C")]
+        public static event Action<byte[], byte[], byte[], BigInteger, BigInteger> Operated;
 
+        public delegate object NEP5Contract(string method, object[] args);
 
         //超级管理员账户
-        private static readonly byte[] SuperAdmin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
+        private static readonly byte[] admin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
         [Appcall("95e6b39d3557f5ba5ba59fab178f6de3c24e3d04")] //JumpCenter ScriptHash
         public static extern object JumpCenterContract(string method, object[] args);
@@ -50,9 +59,28 @@ namespace SDUSDTContract1
         //配置参数-清算比率，百分位，如110
         private const string CONFIG_CLEAR_RATE = "clear_rate";
 
+        //最低抵押率
+        private const string CONFIG_RATE_C = "liquidate_rate_c";
+
+        //合约收款账户
+        private const string STORAGE_ACCOUNT = "storage_account";
+
+        //SDS合约账户
+        private const string SDS_ACCOUNT = "sds_account";
+
+        //Oracle合约账户
+        private const string ORACLE_ACCOUNT = "oracle_account";
+
+        //WNEO合约账户
+        private const string WASSET_ACCOUNT = "wasset_account";
+
+        private const ulong SIX_POWER = 1000000;
+
+
         //交易类型
         public enum ConfigTranType {
-            TRANSACTION_TYPE_LOCK = 1,//锁仓
+            TRANSACTION_TYPE_OPEN=1,//创建SAR
+            TRANSACTION_TYPE_LOCK,//锁仓
             TRANSACTION_TYPE_DRAW,//提取
             TRANSACTION_TYPE_FREE,//释放
             TRANSACTION_TYPE_WIPE,//赎回
@@ -61,10 +89,7 @@ namespace SDUSDTContract1
             TRANSACTION_TYPE_GIVE,//转移所有权
         }
 
-        /*存储结构有     
-        * map(address,balance)   存储地址余额   key = 0x11+address
-        * map(txid,TransferInfo) 存储交易详情   key = 0x13+txid
-        */
+
         /// <summary>
         ///   This smart contract is designed to implement NEP-5
         ///   Parameter List: 0710
@@ -124,27 +149,13 @@ namespace SDUSDTContract1
                     byte[] from = (byte[])args[0];
                     byte[] to = (byte[])args[1];
                     BigInteger value = (BigInteger)args[2];
-
+                    if (from.Length != 20 || to.Length != 20)
+                        return false;
                     if (callscript.AsBigInteger() != from.AsBigInteger())
                         return false;
                     return transfer(from, to, value);
                 }
-                //允许赋权操作的金额
-                if (operation == "allowance")
-                {
-                    //args[0]发起人账户   args[1]被授权账户
-                    return allowance((byte[])args[0], (byte[])args[1]);
-                }
-                if (operation == "approve")
-                {
-                    //args[0]发起人账户  args[1]被授权账户   args[2]被授权金额
-                    return approve((byte[])args[0], (byte[])args[1], (BigInteger)args[2]);
-                }
-                if (operation == "transferFrom")
-                {
-                    //args[0]转账账户  args[1]被授权账户 args[2]被转账账户   args[3]被授权金额
-                    return transferFrom((byte[])args[0], (byte[])args[1], (byte[])args[2], (BigInteger)args[3]);
-                }
+              
                 if (operation == "getTXInfo")
                 {
                     if (args.Length != 1) return 0;
@@ -172,14 +183,17 @@ namespace SDUSDTContract1
                 {
                     if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
-                    return openSAR(addr);
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+                    return openSAR4C(addr);
                 }
                 //查询债仓记录
                 if (operation == "getSAR4C")
                 {
                     if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
-                    return getSAR(addr);
+
+                    return getSAR4C(addr);
                 }
                 //查询债仓详细操作记录
                 if (operation == "getSARTxInfo")
@@ -194,16 +208,24 @@ namespace SDUSDTContract1
                     if (args.Length != 2) return false;
                     byte[] addr = (byte[])args[0];
                     BigInteger mount = (BigInteger)args[1];
-                    return reserve(addr, mount);
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+
+                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(WASSET_ACCOUNT.AsByteArray()));
+                    return reserve(wAssetID,addr, mount);
                 }
-                //提取SDUSDT
+                //提取SDUSD
                 if (operation == "expande")
                 {
                     if (args.Length != 2) return false;
 
                     byte[] addr = (byte[])args[0];
                     BigInteger mount = (BigInteger)args[1];
-                    return expande(addr, mount);
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+
+                    byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(ORACLE_ACCOUNT.AsByteArray()));
+                    return expande(oracleAssetID,addr, mount);
                 }
                 //释放未被兑换的PNEO
                 if (operation == "withdraw")
@@ -212,7 +234,12 @@ namespace SDUSDTContract1
 
                     byte[] addr = (byte[])args[0];
                     BigInteger mount = (BigInteger)args[1];
-                    return withdraw(addr, mount);
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+
+                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(WASSET_ACCOUNT.AsByteArray()));
+                    byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(ORACLE_ACCOUNT.AsByteArray()));
+                    return withdraw(oracleAssetID,wAssetID,addr, mount);
                 }
                 //赎回质押的PNEO，用SDUSD去兑换
                 if (operation == "contract")
@@ -220,6 +247,8 @@ namespace SDUSDTContract1
                     if (args.Length != 2) return false;
                     byte[] addr = (byte[])args[0];
                     BigInteger mount = (BigInteger)args[1];
+
+                    if (!Runtime.CheckWitness(addr)) return false;
                     return contract(addr, mount);
                 }
                 //关闭在仓
@@ -227,7 +256,10 @@ namespace SDUSDTContract1
                 {
                     if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
-                    return close(addr);
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(WASSET_ACCOUNT.AsByteArray()));
+                    return close(wAssetID,addr);
                 }
                 //强制关闭在仓，由别人发起
                 if (operation == "bite")
@@ -235,7 +267,12 @@ namespace SDUSDTContract1
                     if (args.Length != 2) return false;
                     byte[] otherAddr = (byte[])args[0];
                     byte[] addr = (byte[])args[1];
-                    return bite(otherAddr, addr);
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+
+                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(WASSET_ACCOUNT.AsByteArray()));
+                    byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(ORACLE_ACCOUNT.AsByteArray()));
+                    return bite(oracleAssetID,wAssetID,otherAddr, addr);
                 }
                 //可赎回金额
                 if (operation == "balanceOfRedeem")
@@ -249,7 +286,11 @@ namespace SDUSDTContract1
                 {
                     if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
-                    return redeem(addr);
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+
+                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(WASSET_ACCOUNT.AsByteArray()));
+                    return redeem(wAssetID,addr);
                 }
                 //转移SAR所有权给其它地址
                 if (operation == "give")
@@ -257,6 +298,8 @@ namespace SDUSDTContract1
                     if (args.Length != 2) return false;
                     byte[] fromAdd = (byte[])args[0];
                     byte[] toAdd = (byte[])args[1];
+
+                    if (!Runtime.CheckWitness(fromAdd)) return false;
                     return give(fromAdd, toAdd);
                 }
                 //计算总生成数量
@@ -264,19 +307,14 @@ namespace SDUSDTContract1
                 {
                     return totalGenerate();
                 }
-                //测试增加sdt
-                if (operation == "mintSDT")
+                if (operation == "setAccount")
                 {
                     if (args.Length != 2) return false;
-                    byte[] addr = (byte[])args[0];
-                    BigInteger mount = (BigInteger)args[1];
-                    object[] param = new object[2];
-                    param[0] = addr;
-                    param[1] = mount;
-                    if (!Runtime.CheckWitness(addr)) return false;
-                    if (!(bool)JumpCenterContract("mint", param)) return false;
+                    string key = (string)args[0];
+                    byte[] address = (byte[])args[1];
+                    if (!Runtime.CheckWitness(admin)) return false;
 
-                    return true;
+                    return setAccount(key, address);
                 }
             }
             return false;
@@ -299,6 +337,16 @@ namespace SDUSDTContract1
         public static byte decimals()
         {
             return 8;
+        }
+
+        public static bool setAccount(string key, byte[] address)
+        {
+            if (key == null || key == "") return false;
+
+            if (address.Length != 20) return false;
+            Storage.Put(Storage.CurrentContext, new byte[] { 0x15 }.Concat(key.AsByteArray()), address);
+
+            return true;
         }
 
         /// <summary>
@@ -367,49 +415,12 @@ namespace SDUSDTContract1
             return Storage.Get(Storage.CurrentContext, TOTAL_GENERATE).AsBigInteger();
         }
 
-        private static bool give(byte[] fromAdd, byte[] toAdd)
-        {
-            if (!Runtime.CheckWitness(fromAdd)) return false;
-            //SAR是否存在
-            var keyFrom = fromAdd.Concat(ConvertN(0));
-            byte[] cdp = Storage.Get(Storage.CurrentContext, keyFrom);
-            if (cdp.Length == 0)
-                return false;
-            SARTransferInfo fromCDP = (SARTransferInfo)Helper.Deserialize(cdp);
-
-            var keyTo = toAdd.Concat(ConvertN(0));
-            byte[] cdpTo = Storage.Get(Storage.CurrentContext, keyTo);
-            if (cdpTo.Length > 0)
-                return false;
-
-            //删除SAR
-            Storage.Delete(Storage.CurrentContext, keyFrom);
-
-            //设置新的SAR
-            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            fromCDP.from = toAdd;
-            fromCDP.txid = txid;
-            Storage.Put(Storage.CurrentContext, keyTo, Helper.Serialize(fromCDP));
-
-            //记录操作信息
-            SARTransferDetail detail = new SARTransferDetail();
-            detail.from = toAdd;
-            detail.cdpTxid = txid;
-            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_GIVE;
-            detail.operated = 0;
-            detail.hasLocked = fromCDP.locked;
-            detail.hasDrawed = fromCDP.hasDrawed;
-            detail.txid = txid;
-
-            Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
-            return true;
-        }
 
         public static bool operateTotalSupply(BigInteger mount)
         {
-            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            BigInteger current = Storage.Get(Storage.CurrentContext, new byte[] { 0x15}.Concat(TOTAL_SUPPLY.AsByteArray())).AsBigInteger();
             if (current + mount >= 0) {
-                Storage.Put(Storage.CurrentContext,TOTAL_SUPPLY, current + mount);
+                Storage.Put(Storage.CurrentContext, new byte[] { 0x15 }.Concat(TOTAL_SUPPLY.AsByteArray()), current + mount);
             }
             return true;
         }
@@ -432,9 +443,8 @@ namespace SDUSDTContract1
         }
 
 
-        private static bool redeem(byte[] addr)
+        private static bool redeem(byte[] wAssetID,byte[] addr)
         {
-            if (!Runtime.CheckWitness(addr)) return false;
 
             //被清仓用户剩余PNEO所得
             var otherKey = addr.Concat(ConvertN(1));
@@ -446,13 +456,18 @@ namespace SDUSDTContract1
             //保存剩余PNEO金额
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
 
-            //拿到该有的PNEO
-            object[] param = new object[3];
-            param[0] = addr;
-            param[1] = txid;
-            param[2] = currentRemain;
-            if (!(bool)JumpCenterContract("increase", param)) return false;
-       
+            byte[] from = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(STORAGE_ACCOUNT.AsByteArray()));
+            if (from.Length == 0) return false;
+            {
+                object[] arg = new object[3];
+                arg[0] = from;
+                arg[1] = addr;
+                arg[2] = currentRemain;
+                var WContract = (NEP5Contract)wAssetID.ToDelegate();
+
+                if (!(bool)WContract("transfer_contract", arg)) return false;
+            }
+
             Storage.Delete(Storage.CurrentContext,otherKey);
             return true;
         }
@@ -465,49 +480,66 @@ namespace SDUSDTContract1
             return (SARTransferDetail)Helper.Deserialize(v);
         }
 
-        private static SARTransferInfo getSAR(byte[] addr)
+        private static SARInfo getSAR4C(byte[] addr)
         {
             //SAR是否存在
-            var key = addr.Concat(ConvertN(0));
+            byte[] key = new byte[] { 0x12 }.Concat(addr);
             byte[] sar = Storage.Get(Storage.CurrentContext, key);
             if (sar.Length == 0)
                 return null;
-            SARTransferInfo cdpInfo = (SARTransferInfo)Helper.Deserialize(sar);
-            return cdpInfo;
+            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
+            return sarInfo;
         }
 
-        private static Boolean bite(byte[] otherAddr, byte[] addr)
+        private static Boolean bite(byte[] oracleAssetID,byte[] wAssetID, byte[] otherAddr, byte[] addr)
         {
-            if (!Runtime.CheckWitness(addr)) return false;
             //SAR是否存在
-            var key = otherAddr.Concat(ConvertN(0));
+            byte[] key = new byte[] { 0x12 }.Concat(otherAddr);
 
             byte[] sar = Storage.Get(Storage.CurrentContext, key);
             if (sar.Length == 0)
                 return false;
-            SARTransferInfo cdpInfo = (SARTransferInfo)Helper.Deserialize(sar);
+            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
 
-            BigInteger lockedPneo = cdpInfo.locked;
-            BigInteger hasDrawed = cdpInfo.hasDrawed;
+            BigInteger lockedPneo = sarInfo.locked;
+            BigInteger hasDrawed = sarInfo.hasDrawed;
 
             //不需要清算
             if (hasDrawed <= 0) return false;
 
             //余额SDUSD是否足够
-            BigInteger myBalance = Storage.Get(Storage.CurrentContext, addr).AsBigInteger();
+            BigInteger myBalance = balanceOf(addr);  
             if (hasDrawed > myBalance) return false;
 
-            //当前清算折扣比例
-            BigInteger rateClear = Storage.Get(Storage.CurrentContext, CONFIG_CLEAR_RATE.AsByteArray()).AsBigInteger();
+            //当前NEO美元价格，需要从价格中心获取
+            BigInteger neoPrice = 0;
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_PRICE_NEO;
+                neoPrice = (BigInteger)OracleContract("getPrice", arg);
+            }
 
             //当前兑换率，需要从配置中心获取
-            BigInteger rate = Storage.Get(Storage.CurrentContext, CONFIG_RATE.AsByteArray()).AsBigInteger();
+            BigInteger rate = getConfig(CONFIG_RATE);
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_RATE_C;
+                rate = (BigInteger)OracleContract("getConfig", arg);
+            }
 
-            //当前NEO美元价格，需要从价格中心获取
-            BigInteger neoPrice = Storage.Get(Storage.CurrentContext, CONFIG_PRICE_NEO.AsByteArray()).AsBigInteger();
+            //当前清算折扣比例，需要从配置中心获取
+            BigInteger rateClear = 0;
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_CLEAR_RATE;
+                rate = (BigInteger)OracleContract("getConfig", arg);
+            }
 
-            //计算可以拿到的pneo
-            BigInteger canClearPneo = hasDrawed * rateClear / (neoPrice * 100);
+            //计算可以拿到的W资产
+            BigInteger canClearPneo = hasDrawed * rateClear * SIX_POWER/ neoPrice;
 
             //剩余的PNEO记录到原用户账户下
             BigInteger remain = lockedPneo - canClearPneo;
@@ -526,15 +558,22 @@ namespace SDUSDTContract1
             //拿到该有的PNEO
             //保存剩余PNEO金额
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-  
-            object[] param = new object[3];
-            param[0] = addr;
-            param[1] = txid;
-            param[2] = canClearPneo;
-            if (!(bool)JumpCenterContract("increase",param)) return false;
+
+            byte[] from = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(STORAGE_ACCOUNT.AsByteArray()));
+            if (from.Length == 0) return false;
+            {
+                object[] arg = new object[3];
+                arg[0] = from;
+                arg[1] = addr;
+                arg[2] = canClearPneo;
+                var WContract = (NEP5Contract)wAssetID.ToDelegate();
+
+                if (!(bool)WContract("transfer_contract", arg)) return false;
+            }
 
             //删除CDP
             Storage.Delete(Storage.CurrentContext, key);
+
             if (remain > 0) {
                 //被清仓用户剩余PNEO所得
                 var otherKey = otherAddr.Concat(ConvertN(1));
@@ -545,13 +584,16 @@ namespace SDUSDTContract1
             //记录交易详细数据
             SARTransferDetail detail = new SARTransferDetail();
             detail.from = addr;
-            detail.cdpTxid = cdpInfo.txid;
+            detail.sarTxid = sarInfo.txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_FORCESHUT;
             detail.operated = hasDrawed;
             detail.hasLocked = lockedPneo;
             detail.hasDrawed = hasDrawed;
             detail.txid = txid;
-            Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
+            Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(txid), Helper.Serialize(detail));
+
+            //触发操作事件
+            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_FORCESHUT, 0);
             return true;
         }
 
@@ -565,79 +607,29 @@ namespace SDUSDTContract1
         {
             if (key == null || key == "") return false;
             //只允许超管操作
-            if (!Runtime.CheckWitness(SuperAdmin)) return false;
+            if (!Runtime.CheckWitness(admin)) return false;
 
             Storage.Put(Storage.CurrentContext,key.AsByteArray(),value);
             return true;
         }
 
-        private static Boolean close(byte[] addr)
-        {
-            if (addr.Length != 20) return false;
-            if (!Runtime.CheckWitness(addr)) return false;
-            //CDP是否存在
-            var key = addr.Concat(ConvertN(0));
-
-            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
-            if (cdp.Length == 0)
-                return false;
-            SARTransferInfo cdpInfo = (SARTransferInfo)Helper.Deserialize(cdp);
-
-            BigInteger locked = cdpInfo.locked;
-            BigInteger hasDrawed = cdpInfo.hasDrawed;
-            
-            //当前余额必须要大于负债
-            BigInteger balance = balanceOf(addr);
-            if (hasDrawed > balance) return false;
-            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            if (locked > 0)
-            {
-                object[] param = new object[3];
-                param[0] = addr;
-                param[1] = txid;
-                param[2] = locked;
-                if (!(bool)JumpCenterContract("increase", param)) return false;
-            }
-
-            if (hasDrawed > 0)
-            {
-                //先要销毁SD
-                transfer(addr, null, hasDrawed);
-                //减去总量
-                operateTotalSupply(0 - hasDrawed);
-            }
-            //关闭CDP
-            Storage.Delete(Storage.CurrentContext,key);
-
-            //记录交易详细数据
-            SARTransferDetail detail = new SARTransferDetail();
-            detail.from = addr;
-            detail.cdpTxid = cdpInfo.txid;
-            detail.txid = txid;
-            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_SHUT;
-            detail.operated = hasDrawed;
-            detail.hasLocked = locked;
-            detail.hasDrawed = hasDrawed;
-            Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
-            return true;
-        }
+     
 
         private static Boolean contract(byte[] addr, BigInteger mount)
         {
             if (addr.Length != 20) return false;
             if (mount <= 0) return false;
-            if (!Runtime.CheckWitness(addr)) return false;
 
-            //CDP是否存在
-            var key = addr.Concat(ConvertN(0));
+            //SAR是否存在
+            byte[] key = new byte[] { 0x12 }.Concat(addr);
 
-            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
-            if (cdp.Length == 0)
+            byte[] sar = Storage.Get(Storage.CurrentContext, key);
+            if (sar.Length == 0)
                 return false;
-            SARTransferInfo cdpInfo = (SARTransferInfo)Helper.Deserialize(cdp);
+            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
 
-            BigInteger locked = cdpInfo.locked;
-            BigInteger hasDrawed = cdpInfo.hasDrawed;
+            BigInteger locked = sarInfo.locked;
+            BigInteger hasDrawed = sarInfo.hasDrawed;
 
             //SD赎回量要小于已经在仓的
             if (mount > hasDrawed) return false;
@@ -645,23 +637,26 @@ namespace SDUSDTContract1
             //减少金额
             transfer(addr,null, mount);
             //减少总量
-            operateTotalSupply(0- mount);
+            operateTotalSupply(0 - mount);
 
-            cdpInfo.hasDrawed = hasDrawed - mount;
-            Storage.Put(Storage.CurrentContext, key, Helper.Serialize(cdpInfo));
-
+            sarInfo.hasDrawed = hasDrawed - mount;
+            Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
 
             //记录交易详细数据
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             SARTransferDetail detail = new SARTransferDetail();
             detail.from = addr;
-            detail.cdpTxid = cdpInfo.txid;
+            detail.sarTxid = sarInfo.txid;
             detail.txid = txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_WIPE;
             detail.operated = mount;
             detail.hasLocked = locked;
             detail.hasDrawed = hasDrawed;
-            Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
+
+            Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(txid), Helper.Serialize(detail));
+
+            //触发操作事件
+            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_WIPE, mount);
             return true;
         }
 
@@ -677,147 +672,199 @@ namespace SDUSDTContract1
         /// <returns>
         ///     Return Boolean
         /// </returns>
-        private static Boolean withdraw(byte[] addr, BigInteger mount)
+        private static Boolean withdraw(byte[] oracleAssetID,byte[] wAssetID,byte[] addr, BigInteger mount)
         {
             if (mount <= 0) return false;
-            if (!Runtime.CheckWitness(addr)) return false;
 
             //CDP是否存在
-            var key = addr.Concat(ConvertN(0));
+            byte[] key = new byte[] { 0x12 }.Concat(addr);
 
-            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
-            if (cdp.Length == 0)
+            byte[] sar = Storage.Get(Storage.CurrentContext, key);
+            if (sar.Length == 0)
                 return false;
-            SARTransferInfo cdpInfo = (SARTransferInfo)Helper.Deserialize(cdp);
+            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
 
-            BigInteger locked = cdpInfo.locked;
-            BigInteger hasDrawed = cdpInfo.hasDrawed;
+            BigInteger locked = sarInfo.locked;
+            BigInteger hasDrawed = sarInfo.hasDrawed;
 
             //当前NEO美元价格，需要从价格中心获取
-            BigInteger neoPrice = getConfig(CONFIG_PRICE_NEO);
+            BigInteger neoPrice = 0;
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_PRICE_NEO;
+                neoPrice = (BigInteger)OracleContract("getPrice", arg);
+            }
+
             //当前兑换率，需要从配置中心获取
             BigInteger rate = getConfig(CONFIG_RATE);
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_RATE_C;
+                rate = (BigInteger)OracleContract("getConfig", arg);
+            }
 
             //计算已经兑换过的PNEO量
-            BigInteger hasDrawPNeo = hasDrawed * rate / (100 * neoPrice);
+            BigInteger hasDrawPNeo = hasDrawed * rate * SIX_POWER / neoPrice;
 
             //释放的总量大于已经剩余，不能操作
             if (mount > locked - hasDrawPNeo) return false;
 
-            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            byte[] from = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(STORAGE_ACCOUNT.AsByteArray()));
+            if (from.Length == 0) return false;
+            {
+                object[] arg = new object[3];
+                arg[0] = from;
+                arg[1] = addr;
+                arg[2] = mount;
+                var WContract = (NEP5Contract)wAssetID.ToDelegate();
 
-            object[] param = new object[3];
-            param[0] = addr;
-            param[1] = txid;
-            param[2] = mount;
-            if (!(bool)JumpCenterContract("increase", param)) return false;
+                if (!(bool)WContract("transfer_contract", arg)) return false;
+            }
 
             //重新设置锁定量
-            cdpInfo.locked = locked - mount;
-            Storage.Put(Storage.CurrentContext, key, Helper.Serialize(cdpInfo));
+            sarInfo.locked = locked - mount;
+            Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
 
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             //记录交易详细数据
             SARTransferDetail detail = new SARTransferDetail();
             detail.from = addr;
-            detail.cdpTxid = cdpInfo.txid;
+            detail.sarTxid = sarInfo.txid;
             detail.txid = txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_FREE;
             detail.operated = mount;
             detail.hasLocked = locked - mount;
             detail.hasDrawed = hasDrawed;
-            Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
+            Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(txid), Helper.Serialize(detail));
+
+            //触发操作事件
+            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_FREE, mount);
             return true;
         }
 
-        private static Boolean openSAR(byte[] addr)
+        private static Boolean openSAR4C(byte[] addr)
         {
-            if (!Runtime.CheckWitness(addr)) return false;
-
             //已经有SAR就不重新建
-            SARTransferInfo cdpInfo = getSAR(addr);
-            if (cdpInfo != null) return false;
+            SARInfo sarInfo = getSAR4C(addr);
+            if (sarInfo != null) return false;
 
             //交易ID 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
 
             //交易信息
-            cdpInfo = new SARTransferInfo();
-            cdpInfo.from = addr;
-            cdpInfo.locked = 0;
-            cdpInfo.hasDrawed = 0;
-            cdpInfo.txid = txid;
+            sarInfo = new SARInfo();
+            sarInfo.owner = addr;
+            sarInfo.locked = 0;
+            sarInfo.hasDrawed = 0;
+            sarInfo.txid = txid;
 
-            byte[] key = addr.Concat(ConvertN(0));
-            byte[] txinfo = Helper.Serialize(cdpInfo);
+            byte[] key = new byte[] { 0x12}.Concat(addr);
+            byte[] txinfo = Helper.Serialize(sarInfo);
+
             Storage.Put(Storage.CurrentContext, key, txinfo);
+
+            //交易详细信息
+            SARTransferDetail detail = new SARTransferDetail();
+            detail.from = addr;
+            detail.sarTxid = txid;
+            detail.txid = txid;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_OPEN;
+            detail.operated = 0;
+            detail.hasLocked = 0;
+            detail.hasDrawed = 0;
+
+            Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(txid), Helper.Serialize(detail));
+
+            //触发操作事件
+            Operated(addr, txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_OPEN,0);
             return true;
         }
 
-        private static Boolean reserve(byte[] addr, BigInteger lockMount)
+        private static Boolean reserve(byte[] wAddr,byte[] addr, BigInteger lockMount)
         {
             if (lockMount <= 0) return false;
-            if (!Runtime.CheckWitness(addr)) return false;
 
-            //CDP是否存在
-            var key = addr.Concat(ConvertN(0));
+            //SAR是否存在
+            var key = new byte[]{ 0x12 }.Concat(addr);
 
-            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
-            if (cdp.Length == 0)
+            byte[] sar = Storage.Get(Storage.CurrentContext, key);
+            if (sar.Length == 0)
                 return false;
-            SARTransferInfo cdpInfo = (SARTransferInfo)Helper.Deserialize(cdp);
+            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
 
-            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            byte[] to = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(STORAGE_ACCOUNT.AsByteArray()));
+            if (to.Length == 0) return false;
 
-            //销毁PNeo
-            //Storage.Put(Storage.CurrentContext,txid,lockMount);
-            object[] param = new object[3];
-            param[0] = addr;
-            param[1] = txid;
-            param[2] = lockMount;
-            if (!(bool)JumpCenterContract("destory", param)) return false;
+            object[] arg = new object[3];
+            arg[0] = addr;
+            arg[1] = to;
+            arg[2] = lockMount;
+
+            var WContract = (NEP5Contract)wAddr.ToDelegate();
+
+            if (!(bool)WContract("transfer", arg)) return false;
 
             //设置锁仓的数量
-            BigInteger currLock = cdpInfo.locked;
-            cdpInfo.locked = currLock + lockMount;
-            Storage.Put(Storage.CurrentContext, key,Helper.Serialize(cdpInfo));
+            BigInteger currLock = sarInfo.locked;
+            sarInfo.locked = currLock + lockMount;
+            Storage.Put(Storage.CurrentContext, key,Helper.Serialize(sarInfo));
+
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
 
             //记录交易详细数据
             SARTransferDetail detail = new SARTransferDetail();
             detail.from = addr;
-            detail.cdpTxid = cdpInfo.txid;
+            detail.sarTxid = sarInfo.txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_LOCK;
             detail.operated = lockMount;
             detail.hasLocked = currLock;
-            detail.hasDrawed = cdpInfo.hasDrawed;
+            detail.hasDrawed = sarInfo.hasDrawed;
             detail.txid = txid;
-            Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
+            Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(txid), Helper.Serialize(detail));
 
+            //触发操作事件
+            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_LOCK, lockMount);
             return true;
         }
 
 
-        private static Boolean expande(byte[] addr, BigInteger drawMount)
+        private static Boolean expande(byte[] oracleAssetID, byte[] addr, BigInteger drawMount)
         {
             if (drawMount <= 0) return false;
-            if (!Runtime.CheckWitness(addr)) return false;
 
-            //CDP是否存在
-            var key = addr.Concat(ConvertN(0));
+            //SAR是否存在
+            var key = new byte[] { 0x12 }.Concat(addr);
 
-            byte[] cdp = Storage.Get(Storage.CurrentContext, key);
-            if (cdp.Length == 0)
+            byte[] sar = Storage.Get(Storage.CurrentContext, key);
+            if (sar.Length == 0)
                 return false;
-            SARTransferInfo cdpInfo = (SARTransferInfo)Helper.Deserialize(cdp);
+            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
 
-            BigInteger locked = cdpInfo.locked;
-            BigInteger hasDrawed = cdpInfo.hasDrawed;
+            BigInteger locked = sarInfo.locked;
+            BigInteger hasDrawed = sarInfo.hasDrawed;
 
             //当前NEO美元价格，需要从价格中心获取
-            BigInteger neoPrice = getConfig(CONFIG_PRICE_NEO);
+            BigInteger neoPrice = 0;
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_PRICE_NEO;
+                neoPrice = (BigInteger)OracleContract("getPrice", arg);
+            }
+
             //当前兑换率，需要从配置中心获取
             BigInteger rate = getConfig(CONFIG_RATE);
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_RATE_C;
+                rate = (BigInteger)OracleContract("getConfig", arg);
+            }
+
             //计算总共能兑换的量
-            BigInteger allSd =locked * neoPrice*100/rate;
+            BigInteger allSd = locked * neoPrice/(rate * SIX_POWER);
             
             //超过兑换上限，不能操作
             if (allSd < hasDrawed + drawMount) return false;
@@ -830,29 +877,135 @@ namespace SDUSDTContract1
             recordTotalGenerate(drawMount);
 
             //设置已经获取量
-            cdpInfo.hasDrawed = hasDrawed + drawMount;
-            Storage.Put(Storage.CurrentContext, key, Helper.Serialize(cdpInfo));
+            sarInfo.hasDrawed = hasDrawed + drawMount;
+            Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
 
             //记录交易详细数据
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             SARTransferDetail detail = new SARTransferDetail();
             detail.from = addr;
-            detail.cdpTxid = cdpInfo.txid;
+            detail.sarTxid = sarInfo.txid;
             detail.txid = txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_DRAW;
             detail.operated = drawMount;
             detail.hasLocked = locked;
             detail.hasDrawed = hasDrawed;
             
-            Storage.Put(Storage.CurrentContext, txid, Helper.Serialize(detail));
+            Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(txid), Helper.Serialize(detail));
+
+            //触发操作事件
+            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_DRAW, drawMount);
             return true;
 
         }
 
+        private static Boolean close(byte[] wAssetID,byte[] addr)
+        {
+            if (addr.Length != 20) return false;
+
+            //CDP是否存在
+            var key = new byte[] { 0x12 }.Concat(addr);
+
+            byte[] sar = Storage.Get(Storage.CurrentContext, key);
+            if (sar.Length == 0)
+                return false;
+            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
+
+            BigInteger locked = sarInfo.locked;
+            BigInteger hasDrawed = sarInfo.hasDrawed;
+
+            //当前余额必须要大于负债
+            BigInteger balance = balanceOf(addr);
+            if (hasDrawed > balance) return false;
+
+            byte[] from = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(STORAGE_ACCOUNT.AsByteArray()));
+            if (from.Length == 0) return false;
+
+            if (hasDrawed > 0)
+            {
+                //先要销毁SD
+                transfer(addr, null, hasDrawed);
+                //减去总量
+                operateTotalSupply(0 - hasDrawed);
+            }
+
+            //返回相应的W资产
+            if (locked > 0)
+            {
+                object[] arg = new object[3];
+                arg[0] = from;
+                arg[1] = addr;
+                arg[2] = locked;
+                var WContract = (NEP5Contract)wAssetID.ToDelegate();
+
+                if (!(bool)WContract("transfer_contract", arg)) return false;
+            }
+
+            //关闭CDP
+            Storage.Delete(Storage.CurrentContext, key);
+
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            //记录交易详细数据
+            SARTransferDetail detail = new SARTransferDetail();
+            detail.from = addr;
+            detail.sarTxid = sarInfo.txid;
+            detail.txid = txid;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_SHUT;
+            detail.operated = hasDrawed;
+            detail.hasLocked = locked;
+            detail.hasDrawed = hasDrawed;
+            Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(txid), Helper.Serialize(detail));
+
+            //触发操作事件
+            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_SHUT, 0);
+            return true;
+        }
+
+        private static bool give(byte[] fromAdd, byte[] toAdd)
+        {
+            //SAR是否存在
+            var keyFrom = new byte[] { 0x12 }.Concat(fromAdd);
+
+            byte[] sar = Storage.Get(Storage.CurrentContext, keyFrom);
+            if (sar.Length == 0)
+                return false;
+            SARInfo fromSAR = (SARInfo)Helper.Deserialize(sar);
+
+            var keyTo = new byte[] { 0x12 }.Concat(toAdd);
+            byte[] sarTo = Storage.Get(Storage.CurrentContext, keyTo);
+            if (sarTo.Length > 0)
+                return false;
+
+            //删除SAR
+            Storage.Delete(Storage.CurrentContext, keyFrom);
+
+            //设置新的SAR
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            fromSAR.owner = toAdd;
+            fromSAR.txid = txid;
+            Storage.Put(Storage.CurrentContext, keyTo, Helper.Serialize(fromSAR));
+
+            //记录操作信息
+            SARTransferDetail detail = new SARTransferDetail();
+            detail.from = toAdd;
+            detail.sarTxid = txid;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_GIVE;
+            detail.operated = 0;
+            detail.hasLocked = fromSAR.locked;
+            detail.hasDrawed = fromSAR.hasDrawed;
+            detail.txid = txid;
+            Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(txid), Helper.Serialize(detail));
+
+            //触发操作事件
+            Operated(fromAdd, fromSAR.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_GIVE, 0);
+            return true;
+        }
+
+
         private static bool recordTotalGenerate(BigInteger drawMount)
         {
-            BigInteger curr = Storage.Get(Storage.CurrentContext, TOTAL_GENERATE).AsBigInteger();
-            Storage.Put(Storage.CurrentContext, TOTAL_GENERATE, curr + drawMount);
+            BigInteger curr = Storage.Get(Storage.CurrentContext, new byte[] { 0x15}.Concat(TOTAL_GENERATE.AsByteArray())).AsBigInteger();
+            Storage.Put(Storage.CurrentContext, new byte[] { 0x15 }.Concat(TOTAL_GENERATE.AsByteArray()), curr + drawMount);
             return true;
         }
 
@@ -860,7 +1013,7 @@ namespace SDUSDTContract1
         ///   This method defines some params to set key.
         /// </summary>
         /// <param name="n">
-        ///     0:openCDP 1:lock 
+        ///     0:openSAR 1:lock 
         /// </param>
         /// <returns>
         ///     Return byte[]
@@ -922,10 +1075,11 @@ namespace SDUSDTContract1
             return v;
         }
 
-        public class SARTransferInfo
+        public class SARInfo
         {
-            //地址
-            public byte[] from;
+
+            //创建者
+            public byte[] owner;
 
             //交易序号
             public byte[] txid;
@@ -935,6 +1089,9 @@ namespace SDUSDTContract1
 
             //已经提取的资产，如SDUSDT  
             public BigInteger hasDrawed;
+
+            //1安全  2不安全 3不可用   
+            public int status;
         }
 
         public class SARTransferDetail
@@ -942,8 +1099,8 @@ namespace SDUSDTContract1
             //地址
             public byte[] from;
 
-            //CDP交易序号
-            public byte[] cdpTxid;
+            //SAR交易序号
+            public byte[] sarTxid;
 
             //交易序号
             public byte[] txid;
@@ -954,115 +1111,11 @@ namespace SDUSDTContract1
             //已经被锁定的资产金额,如PNeo
             public BigInteger hasLocked;
 
-            //已经提取的资产金额，如SDUSDT  
+            //已经提取的资产金额，如SDUSD
             public BigInteger hasDrawed;
 
             //操作类型
             public int type;
-        }
-
-        /// <summary>
-        ///   Return the amount of the tokens that the spender could transfer from the owner acount
-        /// </summary>
-        /// <param name="owner">
-        ///   The account to invoke the Approve method
-        /// </param>
-        /// <param name="spender">
-        ///   The account to grant TransferFrom access to.
-        /// </param>
-        /// <returns>
-        ///   The amount to grant TransferFrom access for
-        /// </returns>
-        public static BigInteger allowance(byte[] owner, byte[] spender)
-        {
-            return Storage.Get(Storage.CurrentContext, owner.Concat(spender)).AsBigInteger();
-        }
-
-        /// <summary>
-        ///   Approve another account to transfer amount tokens from the owner acount by transferForm
-        /// </summary>
-        /// <param name="owner">
-        ///   The account to invoke approve.
-        /// </param>
-        /// <param name="spender">
-        ///   The account to grant TransferFrom access to.
-        /// </param>
-        /// <param name="amount">
-        ///   The amount to grant TransferFrom access for.
-        /// </param>
-        /// <returns>
-        ///   Transaction Successful?
-        /// </returns>
-        public static bool approve(byte[] owner, byte[] spender, BigInteger amount)
-        {
-            if (owner.Length != 20 || spender.Length != 20) return false;
-            if (!Runtime.CheckWitness(owner)) return false;
-            if (owner == spender) return true;
-            if (amount < 0) return false;
-            if (amount == 0)
-            {
-                Storage.Delete(Storage.CurrentContext, owner.Concat(spender));
-                Approved(owner, spender, amount);
-                return true;
-            }
-            Storage.Put(Storage.CurrentContext, owner.Concat(spender), amount);
-            Approved(owner, spender, amount);
-            return true;
-        }
-
-        /// <summary>
-        ///   Transfer an amount from the owner account to the to acount if the spender has been approved to transfer the requested amount
-        /// </summary>
-        /// <param name="owner">
-        ///   The account to transfer a balance from.
-        /// </param>
-        /// <param name="spender">
-        ///   The contract invoker.
-        /// </param>
-        /// <param name="to">
-        ///   The account to transfer a balance to.
-        /// </param>
-        /// <param name="amount">
-        ///   The amount to transfer
-        /// </param>
-        /// <returns>
-        ///   Transaction successful?
-        /// </returns>
-        public static bool transferFrom(byte[] owner, byte[] spender, byte[] to, BigInteger amount)
-        {
-            if (owner.Length != 20 || spender.Length != 20 || to.Length != 20) return false;
-            if (!Runtime.CheckWitness(spender)) return false;
-            BigInteger allowance = Storage.Get(Storage.CurrentContext, owner.Concat(spender)).AsBigInteger();
-            BigInteger fromOrigBalance = Storage.Get(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner)).AsBigInteger();
-            BigInteger toOrigBalance = Storage.Get(Storage.CurrentContext, new byte[] { 0x11 }.Concat(to)).AsBigInteger();
-
-            if (amount >= 0 &&
-                allowance >= amount &&
-                fromOrigBalance >= amount)
-            {
-                if (allowance - amount == 0)
-                {
-                    Storage.Delete(Storage.CurrentContext, owner.Concat(spender));
-                }
-                else
-                {
-                    Storage.Put(Storage.CurrentContext, owner.Concat(spender), IntToBytes(allowance - amount));
-                }
-
-                if (fromOrigBalance - amount == 0)
-                {
-                    Storage.Delete(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner));
-                }
-                else
-                {
-                    Storage.Put(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner), IntToBytes(fromOrigBalance - amount));
-                }
-
-                Storage.Put(Storage.CurrentContext, new byte[] { 0x11 }.Concat(to), IntToBytes(toOrigBalance + amount));
-                Transferred(owner, to, amount);
-                return true;
-            }
-            return false;
         }
 
 

@@ -106,22 +106,6 @@ namespace PNeoContract1
                         return false;
                     return transfer(from, to, value);
                 }
-                //允许赋权操作的金额
-                if (operation == "allowance")
-                {
-                    //args[0]发起人账户   args[1]被授权账户
-                    return allowance((byte[])args[0], (byte[])args[1]);
-                }
-                if (operation == "approve")
-                {
-                    //args[0]发起人账户  args[1]被授权账户   args[2]被授权金额
-                    return approve((byte[])args[0], (byte[])args[1], (BigInteger)args[2]);
-                }
-                if (operation == "transferFrom")
-                {
-                    //args[0]转账账户  args[1]被授权账户 args[2]被转账账户   args[3]被授权金额
-                    return transferFrom((byte[])args[0], (byte[])args[1], (byte[])args[2], (BigInteger)args[3]);
-                }
                 if (operation == "getTXInfo")
                 {
                     if (args.Length != 1) return 0;
@@ -362,110 +346,7 @@ namespace PNeoContract1
                 v = v.Concat(new byte[1] { 0x00 });
             return v;
         }
-
-        /// <summary>
-        ///   Return the amount of the tokens that the spender could transfer from the owner acount
-        /// </summary>
-        /// <param name="owner">
-        ///   The account to invoke the Approve method
-        /// </param>
-        /// <param name="spender">
-        ///   The account to grant TransferFrom access to.
-        /// </param>
-        /// <returns>
-        ///   The amount to grant TransferFrom access for
-        /// </returns>
-        public static BigInteger allowance(byte[] owner, byte[] spender)
-        {
-            return Storage.Get(Storage.CurrentContext, owner.Concat(spender)).AsBigInteger();
-        }
-
-        /// <summary>
-        ///   Approve another account to transfer amount tokens from the owner acount by transferForm
-        /// </summary>
-        /// <param name="owner">
-        ///   The account to invoke approve.
-        /// </param>
-        /// <param name="spender">
-        ///   The account to grant TransferFrom access to.
-        /// </param>
-        /// <param name="amount">
-        ///   The amount to grant TransferFrom access for.
-        /// </param>
-        /// <returns>
-        ///   Transaction Successful?
-        /// </returns>
-        public static bool approve(byte[] owner, byte[] spender, BigInteger amount)
-        {
-            if (owner.Length != 20 || spender.Length != 20) return false;
-            if (!Runtime.CheckWitness(owner)) return false;
-            if (owner == spender) return true;
-            if (amount < 0) return false;
-            if (amount == 0)
-            {
-                Storage.Delete(Storage.CurrentContext, owner.Concat(spender));
-                Approved(owner, spender, amount);
-                return true;
-            }
-            Storage.Put(Storage.CurrentContext, owner.Concat(spender), amount);
-            Approved(owner, spender, amount);
-            return true;
-        }
-
-        /// <summary>
-        ///   Transfer an amount from the owner account to the to acount if the spender has been approved to transfer the requested amount
-        /// </summary>
-        /// <param name="owner">
-        ///   The account to transfer a balance from.
-        /// </param>
-        /// <param name="spender">
-        ///   The contract invoker.
-        /// </param>
-        /// <param name="to">
-        ///   The account to transfer a balance to.
-        /// </param>
-        /// <param name="amount">
-        ///   The amount to transfer
-        /// </param>
-        /// <returns>
-        ///   Transaction successful?
-        /// </returns>
-        public static bool transferFrom(byte[] owner, byte[] spender, byte[] to, BigInteger amount)
-        {
-            if (owner.Length != 20 || spender.Length != 20 || to.Length != 20) return false;
-            if (!Runtime.CheckWitness(spender)) return false;
-            BigInteger allowance = Storage.Get(Storage.CurrentContext, owner.Concat(spender)).AsBigInteger();
-            BigInteger fromOrigBalance = Storage.Get(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner)).AsBigInteger();
-            BigInteger toOrigBalance = Storage.Get(Storage.CurrentContext, new byte[] { 0x11 }.Concat(to)).AsBigInteger();
-
-            if (amount >= 0 &&
-                allowance >= amount &&
-                fromOrigBalance >= amount)
-            {
-                if (allowance - amount == 0)
-                {
-                    Storage.Delete(Storage.CurrentContext, owner.Concat(spender));
-                }
-                else
-                {
-                    Storage.Put(Storage.CurrentContext, owner.Concat(spender), IntToBytes(allowance - amount));
-                }
-
-                if (fromOrigBalance - amount == 0)
-                {
-                    Storage.Delete(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner));
-                }
-                else
-                {
-                    Storage.Put(Storage.CurrentContext, new byte[] { 0x11 }.Concat(owner), IntToBytes(fromOrigBalance - amount));
-                }
-
-                Storage.Put(Storage.CurrentContext, new byte[] { 0x11 }.Concat(to), IntToBytes(toOrigBalance + amount));
-                Transferred(owner, to, amount);
-                return true;
-            }
-            return false;
-        }
+      
 
         //增发货币
         public static bool increaseBySD(byte[] to,byte[] txid,BigInteger value)
