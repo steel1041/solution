@@ -20,9 +20,8 @@ namespace WNeoContract1
         //NEO Asset
         private static readonly byte[] neo_asset_id = { 155, 124, 255, 218, 166, 116, 190, 174, 15, 147, 14, 190, 96, 133, 175, 144, 147, 229, 254, 86, 179, 74, 92, 34, 12, 205, 207, 110, 252, 51, 111, 197 };
 
-        //gas 0x602c79718b16e442de58778e148d0b1084e3b2dffd5de6b7b16cee7969282de7
-        //反序  e72d286979ee6cb1b7e65dfddfb2e384100b8d148e7758de42e4168b71792c60
-        private static readonly byte[] gas_asset_id = Helper.HexToBytes("e72d286979ee6cb1b7e65dfddfb2e384100b8d148e7758de42e4168b71792c60");
+        //GAS Asset
+        private static readonly byte[] gas_asset_id = { 231, 45, 40, 105, 121, 238, 108, 177, 183, 230, 93, 253, 223, 178, 227, 132, 16, 11, 141, 20, 142, 119, 88, 222, 66, 228, 22, 139, 113, 121, 44, 96 };
 
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
@@ -33,8 +32,8 @@ namespace WNeoContract1
 
         public delegate object NEP5Contract(string method, object[] args);
 
-        [Appcall("95e6b39d3557f5ba5ba59fab178f6de3c24e3d04")] //JumpCenter ScriptHash
-        public static extern object JumpCenterContract(string method, object[] args);
+        //[Appcall("95e6b39d3557f5ba5ba59fab178f6de3c24e3d04")] //JumpCenter ScriptHash
+        //public static extern object JumpCenterContract(string method, object[] args);
 
         //配置参数-NEO市场价格
         private const string CONFIG_PRICE_NEO = "neo_price";
@@ -64,10 +63,7 @@ namespace WNeoContract1
 
         private const string TOTAL_DESTORY = "totalDestory";
 
-       /*存储结构有     
-         * map(address,balance)   存储地址余额   key = 0x11+address
-         * map(txid,TransferInfo) 存储交易详情   key = 0x13+txid
-        */
+
         /// <summary>
         ///   This smart contract is designed to implement NEP-5
         ///   Parameter List: 0710
