@@ -67,8 +67,8 @@ namespace SDUSDTContract1
         //Oracle合约账户
         private const string ORACLE_ACCOUNT = "oracle_account";
 
-        //WNEO合约账户
-        private const string WASSET_ACCOUNT = "wasset_account";
+        //SNEO合约账户
+        private const string SASSET_ACCOUNT = "sasset_account";
 
         //SDUSD合约账户
         private const string SDUSD_ACCOUNT = "sdusd_account";
@@ -207,7 +207,7 @@ namespace SDUSDTContract1
                     byte[] txid = (byte[])args[0];
                     return getSARTxInfo(txid);
                 }
-                //锁仓PNeo
+                //锁仓SNeo
                 if (operation == "reserve")
                 {
                     if (args.Length != 2) return false;
@@ -216,7 +216,7 @@ namespace SDUSDTContract1
 
                     if (!Runtime.CheckWitness(addr)) return false;
 
-                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(WASSET_ACCOUNT.AsByteArray()));
+                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SASSET_ACCOUNT.AsByteArray()));
                     return reserve(wAssetID,addr, mount);
                 }
                 //提取SDUSD
@@ -234,7 +234,7 @@ namespace SDUSDTContract1
 
                     return expande(oracleAssetID, sdusdAssetID,addr, mount);
                 }
-                //释放未被兑换的PNEO
+                //释放未被兑换的SNEO
                 if (operation == "withdraw")
                 {
                     if (args.Length != 2) return false;
@@ -244,7 +244,7 @@ namespace SDUSDTContract1
 
                     if (!Runtime.CheckWitness(addr)) return false;
 
-                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(WASSET_ACCOUNT.AsByteArray()));
+                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SASSET_ACCOUNT.AsByteArray()));
                     byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
                     return withdraw(oracleAssetID,wAssetID,addr, mount);
                 }
@@ -267,7 +267,7 @@ namespace SDUSDTContract1
                     byte[] addr = (byte[])args[0];
 
                     if (!Runtime.CheckWitness(addr)) return false;
-                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(WASSET_ACCOUNT.AsByteArray()));
+                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SASSET_ACCOUNT.AsByteArray()));
                     byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
                     return close(wAssetID,sdusdAssetID,addr);
                 }
@@ -280,7 +280,7 @@ namespace SDUSDTContract1
 
                     if (!Runtime.CheckWitness(addr)) return false;
 
-                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(WASSET_ACCOUNT.AsByteArray()));
+                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SASSET_ACCOUNT.AsByteArray()));
                     byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
                     byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
                     return bite(oracleAssetID,wAssetID,sdusdAssetID,otherAddr, addr);
@@ -300,7 +300,7 @@ namespace SDUSDTContract1
 
                     if (!Runtime.CheckWitness(addr)) return false;
 
-                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(WASSET_ACCOUNT.AsByteArray()));
+                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SASSET_ACCOUNT.AsByteArray()));
                     return redeem(wAssetID,addr);
                 }
                 //转移SAR所有权给其它地址
@@ -939,8 +939,8 @@ namespace SDUSDTContract1
         {
             if (addr.Length != 20) return false;
 
-            //CDP是否存在
-            var key = new byte[] { 0x12 }.Concat(addr);
+            //SAR是否存在
+            var key = getSARKey(addr);
 
             byte[] sar = Storage.Get(Storage.CurrentContext, key);
             if (sar.Length == 0)

@@ -6,9 +6,9 @@ using System.ComponentModel;
 using System.Numerics;
 using Neo.SmartContract.Framework.Services.System;
 
-namespace WNeoContract1
+namespace SNeoContract
 {
-    public class WNeoContract : SmartContract
+    public class SNeo : SmartContract
     {
         /*存储结构有     
         * map(address,balance)   存储地址余额   key = 0x11+address
@@ -26,14 +26,11 @@ namespace WNeoContract1
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
-
         [DisplayName("onRefundTarget")]
         public static event Action<byte[],byte[]> onRefundTarget;
 
         public delegate object NEP5Contract(string method, object[] args);
 
-        //[Appcall("95e6b39d3557f5ba5ba59fab178f6de3c24e3d04")] //JumpCenter ScriptHash
-        //public static extern object JumpCenterContract(string method, object[] args);
 
         //配置参数-NEO市场价格
         private const string CONFIG_PRICE_NEO = "neo_price";
@@ -63,6 +60,13 @@ namespace WNeoContract1
 
         private const string TOTAL_DESTORY = "totalDestory";
 
+        private static byte[] getBalanceKey(byte[] addr) => new byte[] { 0x11 }.Concat(addr);
+
+        private static byte[] getTotalKey(byte[] total) => new byte[] { 0x12 }.Concat(total);
+
+        private static byte[] getTxidKey(byte[] txid) => new byte[] { 0x13 }.Concat(txid);
+
+        private static byte[] getAccountKey(byte[] account) => new byte[] { 0x14 }.Concat(account);
 
         /// <summary>
         ///   This smart contract is designed to implement NEP-5
@@ -84,7 +88,6 @@ namespace WNeoContract1
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
-                //return Runtime.CheckWitness(SuperAdmin);
                 var tx = (Transaction)ExecutionEngine.ScriptContainer;
                 var curhash = ExecutionEngine.ExecutingScriptHash;
                 var inputs = tx.GetInputs();
@@ -183,7 +186,6 @@ namespace WNeoContract1
                         return false;
                     return transfer(from, to, value);
                 }
-
                 if (operation == "getTXInfo")
                 {
                     if (args.Length != 1) return 0;
@@ -234,7 +236,7 @@ namespace WNeoContract1
                     if (args.Length != 1) return 0;
                     string type = (string)args[0];
 
-                    byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, new byte[] { 0x14 }.Concat(ORACLE_ACCOUNT.AsByteArray()));
+                    byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
                     return mintTokens(oracleAssetID,type);
                 }
 
@@ -284,10 +286,10 @@ namespace WNeoContract1
 
                 //}
                 //计算总抵押数
-                if (operation == "totalDestory")
-                {
-                    return totalDestory();
-                }
+                //if (operation == "totalDestory")
+                //{
+                //    return totalDestory();
+                //}
 
 
             }
@@ -297,15 +299,15 @@ namespace WNeoContract1
         //nep5 func
         public static BigInteger totalSupply()
         {
-            return Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            return Storage.Get(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray())).AsBigInteger();
         }
         public static string name()
         {
-            return "W NEO";
+            return "SNEO";
         }
         public static string symbol()
         {
-            return "WNEO";
+            return "SNEO";
         }
         public static byte decimals()
         {
@@ -324,7 +326,7 @@ namespace WNeoContract1
         public static BigInteger balanceOf(byte[] address)
         {
             if (address.Length != 20) return 0;
-            return Storage.Get(Storage.CurrentContext, new byte[]{ 0x11}.Concat(address)).AsBigInteger();
+            return Storage.Get(Storage.CurrentContext, getBalanceKey(address)).AsBigInteger();
         }
 
         /// <summary>
@@ -348,8 +350,8 @@ namespace WNeoContract1
             if (value <= 0) return false;
 
             if (from == to) return true;
-            var fromKey = new byte[] { 0x11 }.Concat(from);
-            var toKey = new byte[] { 0x11 }.Concat(to);
+            var fromKey = getBalanceKey(from);
+            var toKey = getBalanceKey(to);
             //付款方
             if (from.Length > 0)
             {
@@ -375,26 +377,26 @@ namespace WNeoContract1
 
 
 
-        private static BigInteger totalDestory()
-        {
-            return Storage.Get(Storage.CurrentContext,TOTAL_DESTORY).AsBigInteger();
-        }
+        //private static BigInteger totalDestory()
+        //{
+        //    return Storage.Get(Storage.CurrentContext,TOTAL_DESTORY).AsBigInteger();
+        //}
 
-        private static bool setCallScript(byte[] callScript)
-        {
-            Storage.Put(Storage.CurrentContext, "callScript", callScript);
-            return true;
-        }
+        //private static bool setCallScript(byte[] callScript)
+        //{
+        //    Storage.Put(Storage.CurrentContext, "callScript", callScript);
+        //    return true;
+        //}
 
-        private static byte[] getJumpCallScript()
-        {
-            return Storage.Get(Storage.CurrentContext, "callScript");
-        }
+        //private static byte[] getJumpCallScript()
+        //{
+        //    return Storage.Get(Storage.CurrentContext, "callScript");
+        //}
 
-        private static BigInteger currentMountByW(byte[] txid)
-        {
-            return Storage.Get(Storage.CurrentContext, txid).AsBigInteger();
-        }
+        //private static BigInteger currentMountByW(byte[] txid)
+        //{
+        //    return Storage.Get(Storage.CurrentContext, txid).AsBigInteger();
+        //}
 
         //退款
         public static bool refund(byte[] who)
@@ -438,8 +440,7 @@ namespace WNeoContract1
 
         public static TransferInfo getTXInfo(byte[] txid)
         {
-            var keyTxid = new byte[] { 0x13 }.Concat(txid);
-            byte[] v = Storage.Get(Storage.CurrentContext, keyTxid);
+            byte[] v = Storage.Get(Storage.CurrentContext, getTxidKey(txid));
             if (v.Length == 0)
                 return null;
             return (TransferInfo)Helper.Deserialize(v);
@@ -454,7 +455,7 @@ namespace WNeoContract1
             byte[] txinfo = Helper.Serialize(info);
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            var keyTxid = new byte[] {0x13}.Concat(txid);
+            var keyTxid = getTxidKey(txid);
             Storage.Put(Storage.CurrentContext, keyTxid, txinfo);
         }
 
@@ -497,7 +498,7 @@ namespace WNeoContract1
             //改变总量
             operateTotalSupply(realValue);
 
-            operateTotalDestory(who,realValue);
+            //operateTotalDestory(who,realValue);
             return transfer(null, who, realValue);
         }
 
@@ -534,10 +535,10 @@ namespace WNeoContract1
 
         public static bool operateTotalSupply(BigInteger mount)
         {
-            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            BigInteger current = totalSupply();
             if (current + mount >= 0)
             {
-                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current + mount);
+                Storage.Put(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray()), current + mount);
             }
             return true;
         }
@@ -581,10 +582,10 @@ namespace WNeoContract1
 
             transfer(from, null, value);
 
-            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
+            BigInteger current = totalSupply();
             if (current - value >= 0)
             {
-                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current - value);
+                Storage.Put(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray()), current - value);
             }
 
             //operateTotalSupply(0 - value);
@@ -593,12 +594,12 @@ namespace WNeoContract1
             return true;
         }
 
-        private static bool operateTotalDestory(byte[] from, BigInteger value)
-        {
-            BigInteger curr = Storage.Get(Storage.CurrentContext,TOTAL_DESTORY).AsBigInteger();
-            Storage.Put(Storage.CurrentContext,TOTAL_DESTORY,curr + value);
-            return true;
-        }
+        //private static bool operateTotalDestory(byte[] from, BigInteger value)
+        //{
+        //    BigInteger curr = Storage.Get(Storage.CurrentContext,TOTAL_DESTORY).AsBigInteger();
+        //    Storage.Put(Storage.CurrentContext,TOTAL_DESTORY,curr + value);
+        //    return true;
+        //}
 
         private static BigInteger getConfig(string key)
         {
@@ -619,7 +620,7 @@ namespace WNeoContract1
             if (key == null || key == "") return false;
 
             if (address.Length != 20) return false;
-            Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(key.AsByteArray()), address);
+            Storage.Put(Storage.CurrentContext, getAccountKey(key.AsByteArray()), address);
 
             return true;
         }

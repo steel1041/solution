@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.27428.2011
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WNeoService", "WNeoContract1\WNeoService.csproj", "{50E54BE2-AAAA-4C49-900A-CD7E3CB1803B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SNeoService", "WNeoContract1\SNeoService.csproj", "{50E54BE2-AAAA-4C49-900A-CD7E3CB1803B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PNeoContract1", "PNeoContract1\PNeoContract1.csproj", "{B988D00B-113F-4061-9269-27CAE86BC44B}"
 EndProject

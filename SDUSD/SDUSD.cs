@@ -19,8 +19,6 @@ namespace SDUSD
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
-        public delegate object NEP5Contract(string method, object[] args);
-
         //超级管理员账户
         private static readonly byte[] admin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
@@ -128,22 +126,6 @@ namespace SDUSD
                     byte[] txid = (byte[])args[0];
                     return getTXInfo(txid);
                 }
-                //设置全局参数
-                if (operation == "setConfig")
-                {
-                    if (args.Length != 2) return false;
-                    string key = (string)args[0];
-                    BigInteger value = (BigInteger)args[1];
-                    return setConfig(key, value);
-                }
-                //查询全局参数
-                if (operation == "getConfig")
-                {
-                    if (args.Length != 1) return false;
-                    string key = (string)args[0];
-
-                    return getConfig(key);
-                }
                 if (operation == "setAccount")
                 {
                     if (args.Length != 1) return false;
@@ -151,6 +133,13 @@ namespace SDUSD
 
                     if (!Runtime.CheckWitness(admin)) return false;
                     return setAccount(address);
+                }
+                if (operation == "getAccount")
+                {
+                    if (args.Length != 1) return false;
+                    byte[] address = (byte[])args[0];
+
+                    return getAccount(address);
                 }
                 //增发代币
                 if (operation == "increase")
@@ -210,7 +199,8 @@ namespace SDUSD
            
             if(transfer(addr, null, value)) { 
                 BigInteger current = totalSupply();
-                Storage.Put(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray()), current + value);
+                if (current - value < 0) return false;
+                Storage.Put(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray()), current - value);
                 return true;
             }
             return false;
@@ -224,8 +214,7 @@ namespace SDUSD
             if (transfer(null,addr,value))
             {
                 BigInteger current = totalSupply();
-                if (current - value < 0) return false;
-                Storage.Put(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray()), current - value);
+                Storage.Put(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray()), current + value);
                 return true;
             }
             return false;
