@@ -26,8 +26,8 @@ namespace SNeoContract
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
-        [DisplayName("onRefundTarget")]
-        public static event Action<byte[],byte[]> onRefundTarget;
+        [DisplayName("operator4C")]
+        public static event Action<byte[],byte[],BigInteger,BigInteger> Operator4C;
 
         public delegate object NEP5Contract(string method, object[] args);
 
@@ -68,6 +68,15 @@ namespace SNeoContract
 
         private static byte[] getAccountKey(byte[] account) => new byte[] { 0x14 }.Concat(account);
 
+        //交易类型
+        public enum ConfigTranType
+        {
+            TRANSACTION_TYPE_MINT = 1,//兑换SNEO
+            TRANSACTION_TYPE_REFUND,   //赎回NEO
+            TRANSACTION_TYPE_MINT_GAS,//兑换SGAS
+            TRANSACTION_TYPE_REFUND_GAS   //赎回GAS
+        }
+
         /// <summary>
         ///   This smart contract is designed to implement NEP-5
         ///   Parameter List: 0710
@@ -84,7 +93,7 @@ namespace SNeoContract
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-08-21 15:04:10";
+            var magicstr = "2018-08-27 15:04:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -425,9 +434,12 @@ namespace SNeoContract
             byte[] coinid = tx.Hash.Concat(new byte[] { 0, 0 });
             Storage.Put(Storage.CurrentContext,coinid, who);
 
-            onRefundTarget(coinid,who);
+            //onRefundTarget(coinid,who);
             //改变总量
             operateTotalSupply(0-count);
+
+            //记录操作日志
+            Operator4C(tx.Hash,who,count,(int)ConfigTranType.TRANSACTION_TYPE_REFUND);
             return true;
         }
 
@@ -495,11 +507,14 @@ namespace SNeoContract
             //获取实际兑换量
             BigInteger realValue = getRealValue(oracleAssetID,type, value);
 
-            //改变总量
-            operateTotalSupply(realValue);
+            if (transfer(null, who, realValue)) {
+                operateTotalSupply(realValue);
+                //记录操作日志
+                Operator4C(tx.Hash, who, realValue, (int)ConfigTranType.TRANSACTION_TYPE_MINT);
+                return true;
+            }
+            return false;
 
-            //operateTotalDestory(who,realValue);
-            return transfer(null, who, realValue);
         }
 
         private static BigInteger getRealValue(byte[] oracleAssetID,string type, ulong value)
@@ -563,36 +578,36 @@ namespace SNeoContract
         }
 
         //增发货币
-        public static bool increase(byte[] to, BigInteger value)
-        {
-            if (value <= 0) return false;
-            if (!Runtime.CheckWitness(to)) return false;
+        //public static bool increase(byte[] to, BigInteger value)
+        //{
+        //    if (value <= 0) return false;
+        //    if (!Runtime.CheckWitness(to)) return false;
 
-            transfer(null, to, value);
+        //    transfer(null, to, value);
 
-            operateTotalSupply(value);
-            return true;
-        }
+        //    operateTotalSupply(value);
+        //    return true;
+        //}
 
         //销毁货币
-        public static bool destoryByP(byte[] from,byte[] txid,BigInteger value)
-        {
-            if (value <= 0) return false;
-            if (!Runtime.CheckWitness(from)) return false;
+        //public static bool destoryByP(byte[] from,byte[] txid,BigInteger value)
+        //{
+        //    if (value <= 0) return false;
+        //    if (!Runtime.CheckWitness(from)) return false;
 
-            transfer(from, null, value);
+        //    transfer(from, null, value);
 
-            BigInteger current = totalSupply();
-            if (current - value >= 0)
-            {
-                Storage.Put(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray()), current - value);
-            }
+        //    BigInteger current = totalSupply();
+        //    if (current - value >= 0)
+        //    {
+        //        Storage.Put(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray()), current - value);
+        //    }
 
-            //operateTotalSupply(0 - value);
-            ////记录总抵押量
-            //operateTotalDestory(from,value);
-            return true;
-        }
+        //    //operateTotalSupply(0 - value);
+        //    ////记录总抵押量
+        //    //operateTotalDestory(from,value);
+        //    return true;
+        //}
 
         //private static bool operateTotalDestory(byte[] from, BigInteger value)
         //{

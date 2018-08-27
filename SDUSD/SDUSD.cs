@@ -70,7 +70,7 @@ namespace SDUSD
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-08-22 16:40:10";
+            var magicstr = "2018-08-27 16:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {

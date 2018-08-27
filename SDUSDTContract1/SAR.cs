@@ -6,7 +6,7 @@ using System.ComponentModel;
 using System.Numerics;
 using Neo.SmartContract.Framework.Services.System;
 
-namespace SDUSDTContract1
+namespace SARContract
 {
     public class SAR : SmartContract
     {
@@ -18,9 +18,6 @@ namespace SDUSDTContract1
         * map(str,address)      存储配置信息    key = 0x15+str
         */
 
-        [DisplayName("transfer")]
-        public static event Action<byte[], byte[], BigInteger> Transferred;
-
         /* addr,sartxid,txid,type,operated*/
         [DisplayName("sarOperator4C")]
         public static event Action<byte[], byte[], byte[], BigInteger, BigInteger> Operated;
@@ -29,9 +26,6 @@ namespace SDUSDTContract1
 
         //超级管理员账户
         private static readonly byte[] admin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
-
-        [Appcall("95e6b39d3557f5ba5ba59fab178f6de3c24e3d04")] //JumpCenter ScriptHash
-        public static extern object JumpCenterContract(string method, object[] args);
 
         //因子
         private const ulong factor = 100000000;
@@ -111,7 +105,7 @@ namespace SDUSDTContract1
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-06-05 16:40:10";
+            var magicstr = "2018-08-27 16:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -186,11 +180,12 @@ namespace SDUSDTContract1
                 //创建SAR记录
                 if (operation == "openSAR4C")
                 {
-                    if (args.Length != 1) return false;
+                    if (args.Length != 2) return false;
                     byte[] addr = (byte[])args[0];
+                    string assetType = (string)args[1];
 
                     if (!Runtime.CheckWitness(addr)) return false;
-                    return openSAR4C(addr);
+                    return openSAR4C(addr,assetType);
                 }
                 //查询债仓记录
                 if (operation == "getSAR4C")
@@ -773,7 +768,7 @@ namespace SDUSDTContract1
             return true;
         }
 
-        private static Boolean openSAR4C(byte[] addr)
+        private static Boolean openSAR4C(byte[] addr,string assetType)
         {
             //已经有SAR就不重新建
             byte[] key = getSARKey(addr);
@@ -790,6 +785,8 @@ namespace SDUSDTContract1
             sarInfo.locked = 0;
             sarInfo.hasDrawed = 0;
             sarInfo.txid = txid;
+            sarInfo.assetType = assetType;
+            sarInfo.status = 1;
 
             byte[] txinfo = Helper.Serialize(sarInfo);
 
@@ -1135,6 +1132,8 @@ namespace SDUSDTContract1
             //已经提取的资产，如SDUSDT  
             public BigInteger hasDrawed;
 
+            //neo:neo_price   gas:gas_price 
+            public string assetType;
             //1安全  2不安全 3不可用   
             public int status;
         }
