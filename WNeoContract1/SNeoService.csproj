@@ -8,8 +8,8 @@
     <ProjectGuid>{50E54BE2-AAAA-4C49-900A-CD7E3CB1803B}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>WNeoContract1</RootNamespace>
-    <AssemblyName>WNeoContract1</AssemblyName>
+    <RootNamespace>SNeoContract</RootNamespace>
+    <AssemblyName>SNeoContract</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />

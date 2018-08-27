@@ -8,8 +8,8 @@
     <ProjectGuid>{D495922C-FA4D-4C62-97A1-CD89BFF88504}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>SDUSDTContract1</RootNamespace>
-    <AssemblyName>SDUSDTContract1</AssemblyName>
+    <RootNamespace>SARContract</RootNamespace>
+    <AssemblyName>SARContract</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
