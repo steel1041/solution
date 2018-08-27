@@ -115,52 +115,7 @@ namespace SARContract
             {
                 //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了
                 var callscript = ExecutionEngine.CallingScriptHash;
-                //this is in nep5
-                //if (operation == "totalSupply") return totalSupply();
-                //if (operation == "name") return name();
-                //if (operation == "symbol") return symbol();
-                //if (operation == "decimals") return decimals();
-                //if (operation == "balanceOf")
-                //{
-                //    if (args.Length != 1) return 0;
-                //    byte[] account = (byte[])args[0];
-                //    return balanceOf(account);
-                //}
-                //if (operation == "transfer")
-                //{
-                //    if (args.Length != 3) return false;
-                //    byte[] from = (byte[])args[0];
-                //    byte[] to = (byte[])args[1];
-                //    if (from == to)
-                //        return true;
-                //    if (from.Length != 20 || to.Length != 20)
-                //        return false;
-                //    BigInteger value = (BigInteger)args[2];
-                //    //没有from签名，不让转
-                //    if (!Runtime.CheckWitness(from))
-                //        return false;
-                //    return transfer(from, to, value);
-                //}
-                ////允许合约调用
-                //if (operation == "transfer_contract")
-                //{
-                //    if (args.Length != 3) return false;
-                //    byte[] from = (byte[])args[0];
-                //    byte[] to = (byte[])args[1];
-                //    BigInteger value = (BigInteger)args[2];
-                //    if (from.Length != 20 || to.Length != 20)
-                //        return false;
-                //    if (callscript.AsBigInteger() != from.AsBigInteger())
-                //        return false;
-                //    return transfer(from, to, value);
-                //}
-              
-                //if (operation == "getTXInfo")
-                //{
-                //    if (args.Length != 1) return 0;
-                //    byte[] txid = (byte[])args[0];
-                //    return getTXInfo(txid);
-                //}
+               
                 //设置全局参数
                 if (operation == "setConfig")
                 {
@@ -326,25 +281,6 @@ namespace SARContract
             return false;
         }
 
-        //nep5 func
-        //public static BigInteger totalSupply()
-        //{
-        //    return Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
-        //}
-        //public static string name()
-        //{
-        //    return "Special Drawing USD";
-        //}
-        //public static string symbol()
-        //{
-        //    return "SDUSD";
-        //}
-
-        //public static byte decimals()
-        //{
-        //    return 8;
-        //}
-
         public static bool setAccount(string key, byte[] address)
         {
             if (key == null || key == "") return false;
@@ -354,87 +290,6 @@ namespace SARContract
 
             return true;
         }
-
-        /// <summary>
-        ///  Get the balance of the address
-        /// </summary>
-        /// <param name="address">
-        ///  address
-        /// </param>
-        /// <returns>
-        ///   account balance
-        /// </returns>
-        //public static BigInteger balanceOf(byte[] address)
-        //{
-        //    if (address.Length != 20) return 0;
-        //    return Storage.Get(Storage.CurrentContext, new byte[] { 0x11 }.Concat(address)).AsBigInteger();
-        //}
-
-        /// <summary>
-        ///   Transfer a token balance to another account.
-        /// </summary>
-        /// <param name="from">
-        ///   The contract invoker.
-        /// </param>
-        /// <param name="to">
-        ///   The account to transfer to.
-        /// </param>
-        /// <param name="value">
-        ///   The amount to transfer.
-        /// </param>
-        /// <returns>
-        ///   Transaction Successful?
-        /// </returns>
-        //public static bool transfer(byte[] from, byte[] to, BigInteger value)
-        //{
-
-        //    if (value <= 0) return false;
-
-        //    if (from == to) return true;
-        //    var fromKey = new byte[] { 0x11 }.Concat(from);
-        //    var toKey = new byte[] { 0x11 }.Concat(to);
-        //    //付款方
-        //    if (from.Length > 0)
-        //    {
-        //        BigInteger from_value = Storage.Get(Storage.CurrentContext, fromKey).AsBigInteger();
-        //        if (from_value < value) return false;
-        //        if (from_value == value)
-        //            Storage.Delete(Storage.CurrentContext, fromKey);
-        //        else
-        //            Storage.Put(Storage.CurrentContext, fromKey, from_value - value);
-        //    }
-        //    //收款方
-        //    if (to.Length > 0)
-        //    {
-        //        BigInteger to_value = Storage.Get(Storage.CurrentContext, toKey).AsBigInteger();
-        //        Storage.Put(Storage.CurrentContext, toKey, to_value + value);
-        //    }
-        //    //记录交易信息
-        //    setTxInfo(from, to, value);
-        //    //notify
-        //    Transferred(from, to, value);
-        //    return true;
-        //}
-
-        //private static BigInteger totalGenerate()
-        //{
-        //    return Storage.Get(Storage.CurrentContext, TOTAL_GENERATE).AsBigInteger();
-        //}
-
-
-        //public static bool operateTotalSupply(BigInteger mount)
-        //{
-        //    BigInteger current = Storage.Get(Storage.CurrentContext, new byte[] { 0x15}.Concat(TOTAL_SUPPLY.AsByteArray())).AsBigInteger();
-        //    if (current + mount >= 0) {
-        //        Storage.Put(Storage.CurrentContext, new byte[] { 0x15 }.Concat(TOTAL_SUPPLY.AsByteArray()), current + mount);
-        //    }
-        //    return true;
-        //}
-
-        private static BigInteger currentMount(byte[] txid)
-        {
-           return Storage.Get(Storage.CurrentContext, txid).AsBigInteger();
-         }
 
         private static BigInteger balanceOfRedeem(byte[] addr)
         {
@@ -1043,14 +898,6 @@ namespace SARContract
             return true;
         }
 
-
-        //private static bool recordTotalGenerate(BigInteger drawMount)
-        //{
-        //    BigInteger curr = Storage.Get(Storage.CurrentContext, getAccountKey(TOTAL_GENERATE.AsByteArray())).AsBigInteger();
-        //    Storage.Put(Storage.CurrentContext, getAccountKey(TOTAL_GENERATE.AsByteArray()), curr + drawMount);
-        //    return true;
-        //}
-
         /// <summary>
         ///   This method defines some params to set key.
         /// </summary>
@@ -1160,20 +1007,6 @@ namespace SARContract
 
             //操作类型
             public int type;
-        }
-
-
-        private static byte[] IntToBytes(BigInteger value)
-        {
-            byte[] buffer = value.ToByteArray();
-            return buffer;
-        }
-
-
-        private static BigInteger BytesToInt(byte[] array)
-        {
-            var buffer = new BigInteger(array);
-            return buffer;
         }
 
     }

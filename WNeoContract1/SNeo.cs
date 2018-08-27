@@ -248,59 +248,6 @@ namespace SNeoContract
                     byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
                     return mintTokens(oracleAssetID,type);
                 }
-
-                //W兑换P，销毁W
-                //if (operation == "WNeoToPNeo")
-                //{
-                //    if (args.Length != 2) return false;
-
-                //    byte[] addr = (byte[])args[0];
-                //    BigInteger value = (BigInteger)args[1];
-                //    //判断调用者是否是跳板合约
-                //    byte[] jumpCallScript = Storage.Get(Storage.CurrentContext, "callScript");
-                //    if (callscript.AsBigInteger() != jumpCallScript.AsBigInteger()) return false;
-
-                //    return destoryByP(addr, null, value);
-                //}
-
-                //PNeo兑换WNeo
-                //if (operation == "PNeoToWNeo")
-                //{
-                //    if (args.Length != 2) return false;
-
-                //    byte[] addr = (byte[])args[0];
-                //    BigInteger value = (BigInteger)args[1];
-
-                //    if (!Runtime.CheckWitness(addr)) return false;
-
-                //    var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-                //    object[] param = new object[3];
-                //    param[0] = addr;
-                //    param[1] = txid;
-                //    param[2] = value;
-
-                //    //通过跳板合约调用P
-                //    if (!(bool)JumpCenterContract(operation, param)) return false;
-                //    return increase(addr, value);
-                //}
-                //设置跳板调用合约地址
-                //if (operation == "setCallScript")
-                //{
-                //    if (args.Length != 1) return false;
-                //    byte[] callScript = (byte[])args[0];
-
-                //    //超级管理员设置跳板合约地址
-                //    if (!Runtime.CheckWitness(admin)) return false;
-                //    return setCallScript(callScript);
-
-                //}
-                //计算总抵押数
-                //if (operation == "totalDestory")
-                //{
-                //    return totalDestory();
-                //}
-
-
             }
             return false;
         }
@@ -384,29 +331,6 @@ namespace SNeoContract
             return true;
         }
 
-
-
-        //private static BigInteger totalDestory()
-        //{
-        //    return Storage.Get(Storage.CurrentContext,TOTAL_DESTORY).AsBigInteger();
-        //}
-
-        //private static bool setCallScript(byte[] callScript)
-        //{
-        //    Storage.Put(Storage.CurrentContext, "callScript", callScript);
-        //    return true;
-        //}
-
-        //private static byte[] getJumpCallScript()
-        //{
-        //    return Storage.Get(Storage.CurrentContext, "callScript");
-        //}
-
-        //private static BigInteger currentMountByW(byte[] txid)
-        //{
-        //    return Storage.Get(Storage.CurrentContext, txid).AsBigInteger();
-        //}
-
         //退款
         public static bool refund(byte[] who)
         {
@@ -434,7 +358,6 @@ namespace SNeoContract
             byte[] coinid = tx.Hash.Concat(new byte[] { 0, 0 });
             Storage.Put(Storage.CurrentContext,coinid, who);
 
-            //onRefundTarget(coinid,who);
             //改变总量
             operateTotalSupply(0-count);
 
@@ -577,45 +500,7 @@ namespace SNeoContract
             return v;
         }
 
-        //增发货币
-        //public static bool increase(byte[] to, BigInteger value)
-        //{
-        //    if (value <= 0) return false;
-        //    if (!Runtime.CheckWitness(to)) return false;
-
-        //    transfer(null, to, value);
-
-        //    operateTotalSupply(value);
-        //    return true;
-        //}
-
-        //销毁货币
-        //public static bool destoryByP(byte[] from,byte[] txid,BigInteger value)
-        //{
-        //    if (value <= 0) return false;
-        //    if (!Runtime.CheckWitness(from)) return false;
-
-        //    transfer(from, null, value);
-
-        //    BigInteger current = totalSupply();
-        //    if (current - value >= 0)
-        //    {
-        //        Storage.Put(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray()), current - value);
-        //    }
-
-        //    //operateTotalSupply(0 - value);
-        //    ////记录总抵押量
-        //    //operateTotalDestory(from,value);
-        //    return true;
-        //}
-
-        //private static bool operateTotalDestory(byte[] from, BigInteger value)
-        //{
-        //    BigInteger curr = Storage.Get(Storage.CurrentContext,TOTAL_DESTORY).AsBigInteger();
-        //    Storage.Put(Storage.CurrentContext,TOTAL_DESTORY,curr + value);
-        //    return true;
-        //}
-
+  
         private static BigInteger getConfig(string key)
         {
             if (key == null || key == "") return 0;
@@ -638,19 +523,6 @@ namespace SNeoContract
             Storage.Put(Storage.CurrentContext, getAccountKey(key.AsByteArray()), address);
 
             return true;
-        }
-
-        private static byte[] IntToBytes(BigInteger value)
-        {
-            byte[] buffer = value.ToByteArray();
-            return buffer;
-        }
-
-
-        private static BigInteger BytesToInt(byte[] array)
-        {
-            var buffer = new BigInteger(array);
-            return buffer;
         }
 
     }
