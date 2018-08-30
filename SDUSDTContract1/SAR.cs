@@ -46,11 +46,15 @@ namespace SARContract
         //配置参数-GAS市场价格
         private const string CONFIG_PRICE_GAS = "gas_price";
 
-        //配置参数-清算比率，百分位，如110
+        //配置参数-清算比率，百分位，如90
         private const string CONFIG_CLEAR_RATE = "clear_rate";
 
         //最低抵押率
         private const string CONFIG_RATE_C = "liquidate_rate_c";
+
+        //最低抵押率
+        private const string CONFIG_RESCUE_C = "resuce_rate_c";
+
 
         //合约收款账户
         private const string STORAGE_ACCOUNT = "storage_account";
@@ -69,6 +73,8 @@ namespace SARContract
 
         private const ulong SIX_POWER = 1000000;
 
+        private const ulong TEN_POWER = 10000000000;
+
         private static byte[] getSARKey(byte[] addr) => new byte[] { 0x12 }.Concat(addr);
 
         private static byte[] getTxidKey(byte[] txid) => new byte[] { 0x14 }.Concat(txid);
@@ -84,7 +90,7 @@ namespace SARContract
             TRANSACTION_TYPE_FREE,//释放
             TRANSACTION_TYPE_WIPE,//赎回
             TRANSACTION_TYPE_SHUT,//关闭
-            TRANSACTION_TYPE_FORCESHUT,//对手关闭
+            TRANSACTION_TYPE_RESUCE,//清算其它债仓
             TRANSACTION_TYPE_GIVE,//转移所有权
         }
 
@@ -198,7 +204,7 @@ namespace SARContract
                     byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
                     return withdraw(oracleAssetID,wAssetID,addr, mount);
                 }
-                //赎回质押的PNEO，用SDUSD去兑换
+                //赎回质押的SNEO，用SDUSD去兑换
                 if (operation == "contract")
                 {
                     if (args.Length != 2) return false;
@@ -210,59 +216,59 @@ namespace SARContract
 
                     return contract(sdusdAssetID,addr, mount);
                 }
-                //关闭在仓
+                //关闭债仓
                 if (operation == "close")
                 {
-                    if (args.Length != 1) return false;
+                    if (args.Length != 3) return false;
                     byte[] addr = (byte[])args[0];
+                    byte[] sAssetID = (byte[])args[1];
+                    byte[] sdusdAssetID = (byte[])args[2];
 
                     if (!Runtime.CheckWitness(addr)) return false;
-                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SASSET_ACCOUNT.AsByteArray()));
-                    byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
-                    return close(wAssetID,sdusdAssetID,addr);
+                    return close(sAssetID, sdusdAssetID,addr);
                 }
-                //强制关闭在仓，由别人发起
-                if (operation == "bite")
+                //清算别人债仓，由别人发起
+                if (operation == "rescue")
                 {
-                    if (args.Length != 2) return false;
+                    if (args.Length != 6) return false;
                     byte[] otherAddr = (byte[])args[0];
                     byte[] addr = (byte[])args[1];
+                    BigInteger mount = (BigInteger)args[2];
+                    byte[] wAssetID = (byte[])args[3];
+                    byte[] oracleAssetID = (byte[])args[4];
+                    byte[] sdusdAssetID = (byte[])args[5];
 
                     if (!Runtime.CheckWitness(addr)) return false;
-
-                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SASSET_ACCOUNT.AsByteArray()));
-                    byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
-                    byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
-                    return bite(oracleAssetID,wAssetID,sdusdAssetID,otherAddr, addr);
+                    return rescue(oracleAssetID,wAssetID,sdusdAssetID,otherAddr, addr,mount);
                 }
                 //可赎回金额
-                if (operation == "balanceOfRedeem")
-                {
-                    if (args.Length != 1) return false;
-                    byte[] addr = (byte[])args[0];
-                    return balanceOfRedeem(addr);
-                }
-                //赎回剩余PNEO
-                if (operation == "redeem")
-                {
-                    if (args.Length != 1) return false;
-                    byte[] addr = (byte[])args[0];
+                //if (operation == "balanceOfRedeem")
+                //{
+                //    if (args.Length != 1) return false;
+                //    byte[] addr = (byte[])args[0];
+                //    return balanceOfRedeem(addr);
+                //}
+                //赎回剩余SNEO
+                //if (operation == "redeem")
+                //{
+                //    if (args.Length != 1) return false;
+                //    byte[] addr = (byte[])args[0];
 
-                    if (!Runtime.CheckWitness(addr)) return false;
+                //    if (!Runtime.CheckWitness(addr)) return false;
 
-                    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SASSET_ACCOUNT.AsByteArray()));
-                    return redeem(wAssetID,addr);
-                }
+                //    byte[] wAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SASSET_ACCOUNT.AsByteArray()));
+                //    return redeem(wAssetID,addr);
+                //}
                 //转移SAR所有权给其它地址
-                if (operation == "give")
-                {
-                    if (args.Length != 2) return false;
-                    byte[] fromAdd = (byte[])args[0];
-                    byte[] toAdd = (byte[])args[1];
+                //if (operation == "give")
+                //{
+                //    if (args.Length != 2) return false;
+                //    byte[] fromAdd = (byte[])args[0];
+                //    byte[] toAdd = (byte[])args[1];
 
-                    if (!Runtime.CheckWitness(fromAdd)) return false;
-                    return give(fromAdd, toAdd);
-                }
+                //    if (!Runtime.CheckWitness(fromAdd)) return false;
+                //    return give(fromAdd, toAdd);
+                //}
                 //计算总生成数量
                 //if (operation == "totalGenerate")
                 //{
@@ -353,10 +359,12 @@ namespace SARContract
             return sarInfo;
         }
 
-        private static Boolean bite(byte[] oracleAssetID,byte[] wAssetID,byte[] sdusdAssetID,byte[] otherAddr, byte[] addr)
+        private static Boolean rescue(byte[] oracleAssetID,byte[] wAssetID,byte[] sdusdAssetID,byte[] otherAddr,byte[] addr,BigInteger mount)
         {
+            if (otherAddr.AsBigInteger() == addr.AsBigInteger()) return false;
+
             //SAR是否存在
-            byte[] key = getSARKey(otherAddr);
+            byte[] key = new byte[] { 0x12 }.Concat(otherAddr);
 
             byte[] sar = Storage.Get(Storage.CurrentContext, key);
             if (sar.Length == 0)
@@ -370,15 +378,19 @@ namespace SARContract
             if (hasDrawed <= 0) return false;
 
             //余额SDUSD是否足够
-            BigInteger myBalance = 0;
-            {
-                var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
-                object[] arg = new object[1];
-                arg[0] = addr;
-                myBalance = (BigInteger)SDUSDContract("balanceOf", arg);
-            }
+            //BigInteger myBalance = 0;
+            //{
+            //    var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
+            //    object[] arg = new object[1];
+            //    arg[0] = addr;
+            //    myBalance = (BigInteger)SDUSDContract("balanceOf", arg);
+            //}
 
-            if (hasDrawed > myBalance) return false;
+            //if (hasDrawed > myBalance) return false;
+
+            if (mount > hasDrawed) return false;
+
+            //if (mount > myBalance) return false;
 
             //当前NEO美元价格，需要从价格中心获取
             BigInteger neoPrice = 0;
@@ -390,50 +402,57 @@ namespace SARContract
             }
 
             //当前兑换率，需要从配置中心获取
-            BigInteger rate = getConfig(CONFIG_RATE);
-            {
-                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-                object[] arg = new object[1];
-                arg[0] = CONFIG_RATE_C;
-                rate = (BigInteger)OracleContract("getConfig", arg);
-            }
+            BigInteger rate = 150;
+            //{
+            //    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+            //    object[] arg = new object[1];
+            //    arg[0] = CONFIG_RATE_C;
+            //    rate = (BigInteger)OracleContract("getConfig", arg);
+            //}
 
             //当前清算折扣比例，需要从配置中心获取
-            BigInteger rateClear = 0;
-            {
-                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-                object[] arg = new object[1];
-                arg[0] = CONFIG_CLEAR_RATE;
-                rate = (BigInteger)OracleContract("getConfig", arg);
-            }
+            BigInteger rateClear = 90;
+            //{
+            //    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+            //    object[] arg = new object[1];
+            //    arg[0] = CONFIG_CLEAR_RATE;
+            //    rateClear = (BigInteger)OracleContract("getConfig", arg);
+            //}
 
-            //计算可以拿到的W资产
-            BigInteger canClearPneo = hasDrawed * rateClear * SIX_POWER/ neoPrice;
+            //计算是否需要清算 乘以10000的值 如1.5 => 15000
+            //BigInteger currentRate = lockedPneo * neoPrice / (hasDrawed * 10000);
+            //if (currentRate > rate * 100) return false;
 
-            //剩余的PNEO记录到原用户账户下
-            BigInteger remain = lockedPneo - canClearPneo;
-            if (remain < 0) return false;
+
+            //计算可以拿到的SNEO资产
+            BigInteger canClearPneo = mount* TEN_POWER / (neoPrice * rateClear);
+
+            if (canClearPneo > lockedPneo) return false;
+
+            //清算部分后的抵押率 如：160
+            //BigInteger lastRate = (lockedPneo - canClearPneo) * neoPrice / ((hasDrawed - mount) * SIX_POWER);
+
+            //清算最低兑换率，需要从配置中心获取
+            BigInteger rescueRate = 160;
+            //{
+            //    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+            //    object[] arg = new object[1];
+            //    arg[0] = CONFIG_RESCUE_C;
+            //    rescueRate = (BigInteger)OracleContract("getConfig", arg);
+            //}
+
+            //if (lastRate > rescueRate) return false;
 
             //销毁等量SDUSD
             {
                 var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
                 object[] arg = new object[2];
                 arg[0] = addr;
-                arg[1] = hasDrawed;
+                arg[1] = mount;
                 if(!(bool)SDUSDContract("destory", arg)) return false;
             }
 
-            //总量处理
-            BigInteger current = Storage.Get(Storage.CurrentContext, TOTAL_SUPPLY).AsBigInteger();
-            if (current - hasDrawed >= 0)
-            {
-                Storage.Put(Storage.CurrentContext, TOTAL_SUPPLY, current - hasDrawed);
-            }
-
-            //拿到该有的PNEO
-            //保存剩余PNEO金额
-            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-
+            //拿到该有的SNEO
             byte[] from = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(STORAGE_ACCOUNT.AsByteArray()));
             if (from.Length == 0) return false;
             {
@@ -446,29 +465,26 @@ namespace SARContract
                 if (!(bool)WContract("transfer_contract", arg)) return false;
             }
 
-            //删除CDP
-            Storage.Delete(Storage.CurrentContext, key);
+            sarInfo.locked = lockedPneo - canClearPneo;
+            sarInfo.hasDrawed = hasDrawed - mount;
 
-            if (remain > 0) {
-                //被清仓用户剩余PNEO所得
-                var otherKey = otherAddr.Concat(ConvertN(1));
-                BigInteger currentRemain = Storage.Get(Storage.CurrentContext,otherKey).AsBigInteger();
-                Storage.Put(Storage.CurrentContext, otherKey, currentRemain + remain);
-            }
-           
+            Storage.Put(Storage.CurrentContext, key,Helper.Serialize(sarInfo));
+
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+
             //记录交易详细数据
-            SARTransferDetail detail = new SARTransferDetail();
-            detail.from = addr;
-            detail.sarTxid = sarInfo.txid;
-            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_FORCESHUT;
-            detail.operated = hasDrawed;
-            detail.hasLocked = lockedPneo;
-            detail.hasDrawed = hasDrawed;
-            detail.txid = txid;
-            Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(txid), Helper.Serialize(detail));
+            //SARTransferDetail detail = new SARTransferDetail();
+            //detail.from = addr;
+            //detail.sarTxid = sarInfo.txid;
+            //detail.type = (int)ConfigTranType.TRANSACTION_TYPE_RESUCE;
+            //detail.operated = mount;
+            //detail.hasLocked = lockedPneo;
+            //detail.hasDrawed = hasDrawed;
+            //detail.txid = txid;
+            //Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(txid), Helper.Serialize(detail));
 
             //触发操作事件
-            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_FORCESHUT, 0);
+            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_RESUCE, mount);
             return true;
         }
 
@@ -803,15 +819,15 @@ namespace SARContract
             BigInteger hasDrawed = sarInfo.hasDrawed;
 
             //当前余额必须要大于负债
-            BigInteger balance = 0;
-            {
-                var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
-                object[] arg = new object[1];
-                arg[0] = addr;
-                balance = (BigInteger)SDUSDContract("balanceOf", arg);
-            }
+            //BigInteger balance = 0;
+            //{
+            //    var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
+            //    object[] arg = new object[1];
+            //    arg[0] = addr;
+            //    balance = (BigInteger)SDUSDContract("balanceOf", arg);
+            //}
 
-            if (hasDrawed > balance) return false;
+            //if (hasDrawed > balance) return false;
 
             byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
             if (from.Length == 0) return false;
@@ -922,46 +938,34 @@ namespace SARContract
             throw new Exception("not support.");
         }
 
-    
+        private static int mypow(int x, int y)
+        {
+            if (y < 0)
+            {
+                return 0;
+            }
+            if (y == 0)
+            {
+                return 1;
+            }
+            if (y == 1)
+            {
+                return x;
+            }
+            int result = x;
+            for (int i = 1; i < y; i++)
+            {
+                result *= x;
+            }
+            return result;
+        }
 
-        //public static TransferInfo getTXInfo(byte[] txid)
-        //{
-        //    byte[] v = Storage.Get(Storage.CurrentContext, new byte[] { 0x13 }.Concat(txid));
-        //    if (v.Length == 0)
-        //        return null;
-        //    //新式实现方法只要一行
-        //    return (TransferInfo)Helper.Deserialize(v);
-        //}
-
-        //private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
-        //{
-        //    TransferInfo info = new TransferInfo();
-        //    info.from = from;
-        //    info.to = to;
-        //    info.value = value;
-        //    byte[] txinfo = Helper.Serialize(info);
-
-        //    var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-        //    var keyTxid = new byte[] { 0x13 }.Concat(txid);
-        //    Storage.Put(Storage.CurrentContext, keyTxid, txinfo);
-        //}
 
         public class TransferInfo
         {
             public byte[] from;
             public byte[] to;
             public BigInteger value;
-        }
-        private static byte[] byteLen(BigInteger n)
-        {
-            byte[] v = n.AsByteArray();
-            if (v.Length > 2)
-                throw new Exception("not support");
-            if (v.Length < 2)
-                v = v.Concat(new byte[1] { 0x00 });
-            if (v.Length < 2)
-                v = v.Concat(new byte[1] { 0x00 });
-            return v;
         }
 
         public class SARInfo

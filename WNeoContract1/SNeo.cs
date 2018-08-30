@@ -363,6 +363,9 @@ namespace SNeoContract
 
             //记录操作日志
             Operator4C(tx.Hash,who,count,(int)ConfigTranType.TRANSACTION_TYPE_REFUND);
+
+            //Header header = Blockchain.GetHeader(Blockchain.GetHeight());
+            //header.Timestamp;
             return true;
         }
 
@@ -436,6 +439,7 @@ namespace SNeoContract
                 Operator4C(tx.Hash, who, realValue, (int)ConfigTranType.TRANSACTION_TYPE_MINT);
                 return true;
             }
+            
             return false;
 
         }

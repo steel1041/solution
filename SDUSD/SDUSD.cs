@@ -120,12 +120,12 @@ namespace SDUSD
                     return transfer(from, to, value);
                 }
 
-                if (operation == "getTXInfo")
-                {
-                    if (args.Length != 1) return 0;
-                    byte[] txid = (byte[])args[0];
-                    return getTXInfo(txid);
-                }
+                //if (operation == "getTXInfo")
+                //{
+                //    if (args.Length != 1) return 0;
+                //    byte[] txid = (byte[])args[0];
+                //    return getTXInfo(txid);
+                //}
                 if (operation == "setAccount")
                 {
                     if (args.Length != 1) return false;
@@ -148,7 +148,7 @@ namespace SDUSD
                     byte[] addr = (byte[])args[0];
                     BigInteger value = (BigInteger)args[1];
 
-                    if (!Runtime.CheckWitness(addr)) return false;
+                    //if (!Runtime.CheckWitness(addr)) return false;
 
                     //判断调用者是否是授权合约
                     if (getAccount(callscript) != 1) return false;
@@ -161,7 +161,7 @@ namespace SDUSD
                     byte[] addr = (byte[])args[0];
                     BigInteger value = (BigInteger)args[1];
 
-                    if (!Runtime.CheckWitness(addr)) return false;
+                    //if (!Runtime.CheckWitness(addr)) return false;
 
                     //判断调用者是否是授权合约
                     if (getAccount(callscript) != 1) return false;
@@ -291,7 +291,7 @@ namespace SDUSD
                 Storage.Put(Storage.CurrentContext, toKey, to_value + value);
             }
             //记录交易信息
-            setTxInfo(from, to, value);
+            //setTxInfo(from, to, value);
             //notify
             Transferred(from, to, value);
             return true;
