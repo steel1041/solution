@@ -93,7 +93,7 @@ namespace SNeoContract
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-08-27 15:04:10";
+            var magicstr = "2018-08-30 15:04:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -195,12 +195,12 @@ namespace SNeoContract
                         return false;
                     return transfer(from, to, value);
                 }
-                if (operation == "getTXInfo")
-                {
-                    if (args.Length != 1) return 0;
-                    byte[] txid = (byte[])args[0];
-                    return getTXInfo(txid);
-                }
+                //if (operation == "getTXInfo")
+                //{
+                //    if (args.Length != 1) return 0;
+                //    byte[] txid = (byte[])args[0];
+                //    return getTXInfo(txid);
+                //}
                 //退款
                 if (operation == "refund")
                 {
@@ -325,7 +325,7 @@ namespace SNeoContract
                 Storage.Put(Storage.CurrentContext, toKey, to_value + value);
             }
             //记录交易信息
-            setTxInfo(from, to, value);
+            //setTxInfo(from, to, value);
             //notify
             Transferred(from, to, value);
             return true;

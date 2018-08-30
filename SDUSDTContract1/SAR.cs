@@ -111,7 +111,7 @@ namespace SARContract
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-08-27 16:40:10";
+            var magicstr = "2018-08-30 16:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -403,26 +403,25 @@ namespace SARContract
 
             //当前兑换率，需要从配置中心获取
             BigInteger rate = 150;
-            //{
-            //    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-            //    object[] arg = new object[1];
-            //    arg[0] = CONFIG_RATE_C;
-            //    rate = (BigInteger)OracleContract("getConfig", arg);
-            //}
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_RATE_C;
+                rate = (BigInteger)OracleContract("getConfig", arg);
+            }
 
             //当前清算折扣比例，需要从配置中心获取
             BigInteger rateClear = 90;
-            //{
-            //    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-            //    object[] arg = new object[1];
-            //    arg[0] = CONFIG_CLEAR_RATE;
-            //    rateClear = (BigInteger)OracleContract("getConfig", arg);
-            //}
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_CLEAR_RATE;
+                rateClear = (BigInteger)OracleContract("getConfig", arg);
+            }
 
             //计算是否需要清算 乘以10000的值 如1.5 => 15000
-            //BigInteger currentRate = lockedPneo * neoPrice / (hasDrawed * 10000);
-            //if (currentRate > rate * 100) return false;
-
+            BigInteger currentRate = lockedPneo * neoPrice / (hasDrawed * 10000);
+            if (currentRate > rate * 100) return false;
 
             //计算可以拿到的SNEO资产
             BigInteger canClearPneo = mount* TEN_POWER / (neoPrice * rateClear);
@@ -430,18 +429,18 @@ namespace SARContract
             if (canClearPneo > lockedPneo) return false;
 
             //清算部分后的抵押率 如：160
-            //BigInteger lastRate = (lockedPneo - canClearPneo) * neoPrice / ((hasDrawed - mount) * SIX_POWER);
+            BigInteger lastRate = (lockedPneo - canClearPneo) * neoPrice / ((hasDrawed - mount) * SIX_POWER);
 
             //清算最低兑换率，需要从配置中心获取
             BigInteger rescueRate = 160;
-            //{
-            //    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-            //    object[] arg = new object[1];
-            //    arg[0] = CONFIG_RESCUE_C;
-            //    rescueRate = (BigInteger)OracleContract("getConfig", arg);
-            //}
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_RESCUE_C;
+                rescueRate = (BigInteger)OracleContract("getConfig", arg);
+            }
 
-            //if (lastRate > rescueRate) return false;
+            if (lastRate > rescueRate) return false;
 
             //销毁等量SDUSD
             {
