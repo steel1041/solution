@@ -111,7 +111,7 @@ namespace SARContract
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-08-30 16:40:10";
+            var magicstr = "2018-08-31 16:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -219,10 +219,11 @@ namespace SARContract
                 //关闭债仓
                 if (operation == "close")
                 {
-                    if (args.Length != 3) return false;
+                    if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
-                    byte[] sAssetID = (byte[])args[1];
-                    byte[] sdusdAssetID = (byte[])args[2];
+                    
+                    byte[] sAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SASSET_ACCOUNT.AsByteArray()));
+                    byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
 
                     if (!Runtime.CheckWitness(addr)) return false;
                     return close(sAssetID, sdusdAssetID,addr);
@@ -230,16 +231,16 @@ namespace SARContract
                 //清算别人债仓，由别人发起
                 if (operation == "rescue")
                 {
-                    if (args.Length != 6) return false;
+                    if (args.Length != 3) return false;
                     byte[] otherAddr = (byte[])args[0];
                     byte[] addr = (byte[])args[1];
                     BigInteger mount = (BigInteger)args[2];
-                    byte[] wAssetID = (byte[])args[3];
-                    byte[] oracleAssetID = (byte[])args[4];
-                    byte[] sdusdAssetID = (byte[])args[5];
 
+                    byte[] sAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SASSET_ACCOUNT.AsByteArray()));
+                    byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
+                    byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
                     if (!Runtime.CheckWitness(addr)) return false;
-                    return rescue(oracleAssetID,wAssetID,sdusdAssetID,otherAddr, addr,mount);
+                    return rescue(oracleAssetID, sAssetID, sdusdAssetID,otherAddr, addr,mount);
                 }
                 //可赎回金额
                 //if (operation == "balanceOfRedeem")
@@ -364,7 +365,7 @@ namespace SARContract
             if (otherAddr.AsBigInteger() == addr.AsBigInteger()) return false;
 
             //SAR是否存在
-            byte[] key = new byte[] { 0x12 }.Concat(otherAddr);
+            byte[] key = getSARKey(otherAddr);
 
             byte[] sar = Storage.Get(Storage.CurrentContext, key);
             if (sar.Length == 0)
@@ -470,17 +471,6 @@ namespace SARContract
             Storage.Put(Storage.CurrentContext, key,Helper.Serialize(sarInfo));
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-
-            //记录交易详细数据
-            //SARTransferDetail detail = new SARTransferDetail();
-            //detail.from = addr;
-            //detail.sarTxid = sarInfo.txid;
-            //detail.type = (int)ConfigTranType.TRANSACTION_TYPE_RESUCE;
-            //detail.operated = mount;
-            //detail.hasLocked = lockedPneo;
-            //detail.hasDrawed = hasDrawed;
-            //detail.txid = txid;
-            //Storage.Put(Storage.CurrentContext, new byte[] { 0x14 }.Concat(txid), Helper.Serialize(detail));
 
             //触发操作事件
             Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_RESUCE, mount);
