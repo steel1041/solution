@@ -16,7 +16,6 @@ namespace SNeoContract
         * map(str,address)       存储合约地址   key = 0x14+str
         * map(coinid,address)    存储赎回信息   key = txid+ new byte[]{0,0}
        */
-
         //NEO Asset
         private static readonly byte[] neo_asset_id = { 155, 124, 255, 218, 166, 116, 190, 174, 15, 147, 14, 190, 96, 133, 175, 144, 147, 229, 254, 86, 179, 74, 92, 34, 12, 205, 207, 110, 252, 51, 111, 197 };
 
