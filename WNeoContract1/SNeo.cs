@@ -194,12 +194,6 @@ namespace SNeoContract
                         return false;
                     return transfer(from, to, value);
                 }
-                //if (operation == "getTXInfo")
-                //{
-                //    if (args.Length != 1) return 0;
-                //    byte[] txid = (byte[])args[0];
-                //    return getTXInfo(txid);
-                //}
                 //退款
                 if (operation == "refund")
                 {

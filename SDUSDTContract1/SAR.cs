@@ -170,11 +170,12 @@ namespace SARContract
                     byte[] txid = (byte[])args[0];
                     return getSARTxInfo(txid);
                 }
-                //锁仓SNeo
+                //锁仓SNEO
                 if (operation == "reserve")
                 {
                     if (args.Length != 2) return false;
                     byte[] addr = (byte[])args[0];
+                    //SNEO 
                     BigInteger mount = (BigInteger)args[1];
 
                     if (!Runtime.CheckWitness(addr)) return false;
@@ -188,6 +189,7 @@ namespace SARContract
                     if (args.Length != 2) return false;
 
                     byte[] addr = (byte[])args[0];
+                    //SDUSD
                     BigInteger mount = (BigInteger)args[1];
 
                     if (!Runtime.CheckWitness(addr)) return false;
@@ -203,6 +205,7 @@ namespace SARContract
                     if (args.Length != 2) return false;
 
                     byte[] addr = (byte[])args[0];
+                    //SNEO
                     BigInteger mount = (BigInteger)args[1];
 
                     if (!Runtime.CheckWitness(addr)) return false;
