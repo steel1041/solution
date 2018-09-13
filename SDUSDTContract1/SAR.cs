@@ -58,6 +58,9 @@ namespace SARContract
         //伺机者清算抵押率
         private const string CONFIG_BOND_C = "bond_rate_c";
 
+        //最大发行量
+        private const string CONFIG_RELEASE_MAX = "release_max_c";
+
 
         //合约收款账户
         private const string STORAGE_ACCOUNT = "storage_account";
@@ -118,7 +121,7 @@ namespace SARContract
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-08-31 16:40:10";
+            var magicstr = "2018-09-11 16:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -154,6 +157,33 @@ namespace SARContract
 
                     if (!Runtime.CheckWitness(addr)) return false;
                     return openSAR4C(addr,assetType);
+                }
+                //创建SAR记录
+                if (operation == "migrateSAR4C")
+                {
+                    if (args.Length != 8) return false;
+                    byte[] addr = (byte[])args[0];
+                    byte[] txid = (byte[])args[1];
+                    BigInteger locked = (BigInteger)args[2];
+                    BigInteger hasDrawed = (BigInteger)args[3];
+                    string assetType = (string)args[4];
+                    int status = (int)args[5];
+                    BigInteger bondLocked = (BigInteger)args[6];
+                    BigInteger bondDrawed = (BigInteger)args[7];
+
+                    if (!Runtime.CheckWitness(admin)) return false;
+
+                    SARInfo sar = new SARInfo();
+                    sar.assetType = assetType;
+                    sar.bondDrawed = bondDrawed;
+                    sar.bondLocked = bondLocked;
+                    sar.hasDrawed = hasDrawed;
+                    sar.locked = locked;
+                    sar.owner = addr;
+                    sar.status = status;
+                    sar.txid = txid;
+                    
+                    return migrateSAR4C(addr,sar);
                 }
                 //查询债仓记录
                 if (operation == "getSAR4C")
@@ -309,6 +339,19 @@ namespace SARContract
 
             }
             return false;
+        }
+
+        private static bool migrateSAR4C(byte[] addr, SARInfo sar)
+        {
+            //SAR是否存在
+            byte[] key = getSARKey(addr);
+
+            byte[] sarCurr = Storage.Get(Storage.CurrentContext, key);
+            if (sarCurr.Length > 0)
+                return false;
+
+            Storage.Put(Storage.CurrentContext,key,Helper.Serialize(sar));
+            return true;
         }
 
         public static bool setAccount(string key, byte[] address)
@@ -801,6 +844,8 @@ namespace SARContract
             sarInfo.txid = txid;
             sarInfo.assetType = assetType;
             sarInfo.status = 1;
+            sarInfo.bondLocked = 0;
+            sarInfo.bondDrawed = 0;
 
             byte[] txinfo = Helper.Serialize(sarInfo);
 
@@ -896,7 +941,7 @@ namespace SARContract
             }
 
             //当前兑换率，需要从配置中心获取
-            BigInteger rate = getConfig(CONFIG_RATE);
+            BigInteger rate = 0;
             {
                 var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
                 object[] arg = new object[1];
@@ -904,11 +949,33 @@ namespace SARContract
                 rate = (BigInteger)OracleContract("getConfig", arg);
             }
 
+            //最大发行量
+            BigInteger releaseMax = 0;
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_RELEASE_MAX;
+                releaseMax = (BigInteger)OracleContract("getConfig", arg);
+            }
+
             //计算总共能兑换的量
             BigInteger allSd = locked * neoPrice/(rate * SIX_POWER);
             
             //超过兑换上限，不能操作
             if (allSd < hasDrawed + drawMount) return false;
+
+            //查询SD总量
+            BigInteger totalSupply = 0;
+            {
+                var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
+                object[] arg = new object[2];
+                arg[0] = addr;
+                arg[1] = drawMount;
+                totalSupply = (BigInteger)SDUSDContract("totalSupply", arg);
+            }
+
+            //检查发行总量上限
+            if (totalSupply + drawMount > releaseMax) return false;
 
             //增加金额
             {
@@ -918,10 +985,6 @@ namespace SARContract
                 arg[1] = drawMount;
                 if (!(bool)SDUSDContract("increase", arg)) return false;
             }
-            //增加总金额
-            //operateTotalSupply(drawMount);
-            //记录总生成量
-            //recordTotalGenerate(drawMount);
 
             //设置已经获取量
             sarInfo.hasDrawed = hasDrawed + drawMount;

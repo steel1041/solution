@@ -36,15 +36,15 @@ namespace SDUSD
         private const string STORAGE_ACCOUNT = "storage_account";
 
         //SDS合约账户
-        private const string SDS_ACCOUNT = "sds_account";
+        //private const string SDS_ACCOUNT = "sds_account";
 
         //Oracle合约账户
-        private const string ORACLE_ACCOUNT = "oracle_account";
+        //private const string ORACLE_ACCOUNT = "oracle_account";
 
-        //WNEO合约账户
-        private const string WASSET_ACCOUNT = "wasset_account";
+        //SNEO合约账户
+        //private const string WASSET_ACCOUNT = "wasset_account";
 
-        private const ulong SIX_POWER = 1000000;
+        //private const ulong SIX_POWER = 1000000;
 
         private static byte[] getAccountKey(byte[] account) => new byte[] { 0x15 }.Concat(account);
 

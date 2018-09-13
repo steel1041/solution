@@ -275,6 +275,7 @@ namespace SNeoContract
         public static BigInteger balanceOf(byte[] address)
         {
             if (address.Length != 20) return 0;
+
             return Storage.Get(Storage.CurrentContext, getBalanceKey(address)).AsBigInteger();
         }
 
