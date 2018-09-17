@@ -1,10 +1,10 @@
 ﻿using Neo.SmartContract.Framework;
 using Neo.SmartContract.Framework.Services.Neo;
+using Neo.SmartContract.Framework.Services.System;
 using Helper = Neo.SmartContract.Framework.Helper;
 using System;
 using System.ComponentModel;
 using System.Numerics;
-using Neo.SmartContract.Framework.Services.System;
 
 namespace SNeoContract
 {
@@ -47,7 +47,7 @@ namespace SNeoContract
         private const string ORACLE_ACCOUNT = "oracle_account";
 
         //管理员账户
-        private static readonly byte[] admin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7"); 
+        //private static readonly byte[] admin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7"); 
 
         //因子
         private const ulong factor = 100000000;
@@ -56,8 +56,6 @@ namespace SNeoContract
         private const ulong TOTAL_AMOUNT = 0;
 
         private const string TOTAL_SUPPLY = "totalSupply";
-
-        private const string TOTAL_DESTORY = "totalDestory";
 
         private static byte[] getBalanceKey(byte[] addr) => new byte[] { 0x11 }.Concat(addr);
 
@@ -92,7 +90,7 @@ namespace SNeoContract
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-08-30 15:04:10";
+            var magicstr = "2018-09-17 17:04:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -170,29 +168,24 @@ namespace SNeoContract
                     if (args.Length != 3) return false;
                     byte[] from = (byte[])args[0];
                     byte[] to = (byte[])args[1];
+                    BigInteger amount = (BigInteger)args[2];
+
                     if (from == to)
                         return true;
+
                     if (from.Length != 20 || to.Length != 20)
-                        return false;
-                    BigInteger value = (BigInteger)args[2];
-                    //没有from签名，不让转
-                    if (!Runtime.CheckWitness(from))
-                        return false;
-                    return transfer(from, to, value);
-                }
-                //允许合约调用
-                if (operation == "transfer_contract")
-                {
-                    if (args.Length != 3) return false;
-                    byte[] from = (byte[])args[0];
-                    byte[] to = (byte[])args[1];
-                    BigInteger value = (BigInteger)args[2];
-                    if (from.Length != 20 || to.Length != 20)
+                        throw new InvalidOperationException("The parameters from and to SHOULD be 20-byte addresses.");
+
+                    if (amount <= 0)
+                        throw new InvalidOperationException("The parameter amount MUST be greater than 0.");
+
+                    //if (!IsPayable(to))
+                    //    return false;
+                    //两种方式转账合并一起
+                    if (!Runtime.CheckWitness(from) && from.AsBigInteger() != callscript.AsBigInteger()) 
                         return false;
 
-                    if (callscript.AsBigInteger() != from.AsBigInteger())
-                        return false;
-                    return transfer(from, to, value);
+                    return transfer(from, to, amount);
                 }
                 //退款
                 if (operation == "refund")
@@ -209,37 +202,12 @@ namespace SNeoContract
                     byte[] txid = (byte[])args[0];
                     return getRefundTarget(txid);
                 }
-                //设置全局参数
-                if (operation == "setConfig")
-                {
-                    if (args.Length != 2) return false;
-                    string key = (string)args[0];
-                    BigInteger value = (BigInteger)args[1];
-                    return setConfig(key, value);
-                }
-                //查询全局参数
-                if (operation == "getConfig")
-                {
-                    if (args.Length != 1) return false;
-                    string key = (string)args[0];
-                    return getConfig(key);
-                }
-                if (operation == "setAccount")
-                {
-                    if (args.Length != 2) return false;
-                    string key = (string)args[0];
-                    byte[] address = (byte[])args[1];
-                    if (!Runtime.CheckWitness(admin)) return false;
-
-                    return setAccount(key, address);
-                }
+                
                 if (operation == "mintTokens")
                 {
                     if (args.Length != 1) return 0;
                     string type = (string)args[0];
-
-                    byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
-                    return mintTokens(oracleAssetID,type);
+                    return mintTokens(type);
                 }
             }
             return false;
@@ -296,10 +264,6 @@ namespace SNeoContract
         /// </returns>
         public static bool transfer(byte[] from, byte[] to, BigInteger value)
         {
-
-            if (value <= 0) return false;
-
-            if (from == to) return true;
             var fromKey = getBalanceKey(from);
             var toKey = getBalanceKey(to);
             //付款方
@@ -324,6 +288,12 @@ namespace SNeoContract
             Transferred(from, to, value);
             return true;
         }
+
+        //private static bool IsPayable(byte[] to)
+        //{
+        //    var c = Blockchain.GetContract(to); //0.1
+        //    return c == null || c.IsPayable;
+        //}
 
         //退款
         public static bool refund(byte[] who)
@@ -391,7 +361,7 @@ namespace SNeoContract
             Storage.Put(Storage.CurrentContext, keyTxid, txinfo);
         }
 
-        public static bool mintTokens(byte[] oracleAssetID,string type)
+        public static bool mintTokens(string type)
         {
             var tx = (Transaction)ExecutionEngine.ScriptContainer;
              
@@ -425,7 +395,7 @@ namespace SNeoContract
                 }
             }
             //获取实际兑换量
-            BigInteger realValue = getRealValue(oracleAssetID,type, value);
+            BigInteger realValue = getRealValue(type, value);
 
             if (transfer(null, who, realValue)) {
                 operateTotalSupply(realValue);
@@ -438,34 +408,9 @@ namespace SNeoContract
 
         }
 
-        private static BigInteger getRealValue(byte[] oracleAssetID,string type, ulong value)
+        private static BigInteger getRealValue(string type, ulong value)
         {
             if (value <= 0) return 0;
-            if (type == "gas") {
-                BigInteger neoPrice = 0; 
-                {
-                    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-                    object[] arg = new object[1];
-                    arg[0] = CONFIG_PRICE_NEO;
-                    BigInteger re = (BigInteger)OracleContract("getPrice", arg);
-                    if (re != 0)
-                        neoPrice = re;
-                }
-
-                BigInteger gasPrice = 0;
-                {
-                    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-                    object[] arg = new object[1];
-                    arg[0] = CONFIG_PRICE_GAS;
-                    BigInteger re = (BigInteger)OracleContract("getPrice", arg);
-                    if (re != 0)
-                        gasPrice = re;
-                }
-                if (neoPrice == 0 || gasPrice == 0) {
-                    return value * 2/10;
-                }
-                return value * gasPrice/neoPrice;
-            }
             return value;
         }
 
@@ -484,43 +429,6 @@ namespace SNeoContract
             public byte[] from;
             public byte[] to;
             public BigInteger value;
-        }
-
-        private static byte[] byteLen(BigInteger n)
-        {
-            byte[] v = n.AsByteArray();
-            if (v.Length > 2)
-                throw new Exception("not support");
-            if (v.Length < 2)
-                v = v.Concat(new byte[1] { 0x00 });
-            if (v.Length < 2)
-                v = v.Concat(new byte[1] { 0x00 });
-            return v;
-        }
-
-  
-        private static BigInteger getConfig(string key)
-        {
-            if (key == null || key == "") return 0;
-            return Storage.Get(Storage.CurrentContext, key.AsByteArray()).AsBigInteger();
-        }
-
-        private static Boolean setConfig(string key, BigInteger value)
-        {
-            if (key == null || key == "") return false;
-            if (!Runtime.CheckWitness(admin)) return false;
-            Storage.Put(Storage.CurrentContext, key.AsByteArray(), value);
-            return true;
-        }
-
-        public static bool setAccount(string key, byte[] address)
-        {
-            if (key == null || key == "") return false;
-
-            if (address.Length != 20) return false;
-            Storage.Put(Storage.CurrentContext, getAccountKey(key.AsByteArray()), address);
-
-            return true;
         }
 
     }

@@ -96,36 +96,21 @@ namespace SDUSD
                     if (args.Length != 3) return false;
                     byte[] from = (byte[])args[0];
                     byte[] to = (byte[])args[1];
-                    if (from == to)
-                        return true;
-                    if (from.Length != 20 || to.Length != 20)
-                        return false;
-                    BigInteger value = (BigInteger)args[2];
-                    //没有from签名，不让转
-                    if (!Runtime.CheckWitness(from))
-                        return false;
-                    return transfer(from, to, value);
-                }
-                //允许合约调用
-                if (operation == "transfer_contract")
-                {
-                    if (args.Length != 3) return false;
-                    byte[] from = (byte[])args[0];
-                    byte[] to = (byte[])args[1];
-                    BigInteger value = (BigInteger)args[2];
-                    if (from.Length != 20 || to.Length != 20)
-                        return false;
-                    if (callscript.AsBigInteger() != from.AsBigInteger())
-                        return false;
-                    return transfer(from, to, value);
-                }
+                    BigInteger amount = (BigInteger)args[2];
 
-                //if (operation == "getTXInfo")
-                //{
-                //    if (args.Length != 1) return 0;
-                //    byte[] txid = (byte[])args[0];
-                //    return getTXInfo(txid);
-                //}
+                    if (from.Length != 20 || to.Length != 20)
+                        throw new InvalidOperationException("The parameters from and to SHOULD be 20-byte addresses.");
+
+                    if (amount <= 0)
+                        throw new InvalidOperationException("The parameter amount MUST be greater than 0.");
+
+                    //if (!IsPayable(to))
+                    //    return false;
+                    //两种方式转账合并一起
+                    if (!Runtime.CheckWitness(from) && from.AsBigInteger() != callscript.AsBigInteger())
+                        return false;
+                    return transfer(from, to, amount);
+                }
                 if (operation == "setAccount")
                 {
                     if (args.Length != 1) return false;
