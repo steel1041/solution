@@ -80,6 +80,8 @@ namespace SARContract
         //SDUSD合约账户
         private const string SDUSD_ACCOUNT = "sdusd_account";
 
+        private const string SAR_STATE = "sar_state";
+
         private const ulong SIX_POWER = 1000000;
 
         private const ulong TEN_POWER = 10000000000;
@@ -91,6 +93,9 @@ namespace SARContract
         private static byte[] getAccountKey(byte[] account) => new byte[] { 0x15 }.Concat(account);
 
         private static byte[] getBondKey(byte[] account) => new byte[] { 0x16 }.Concat(account);
+
+        private static byte[] getConfigKey(byte[] key) => new byte[] { 0x17 }.Concat(key);
+
 
 
         //交易类型
@@ -194,7 +199,7 @@ namespace SARContract
                     if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
 
-                    return getSAR4C(addr);
+                    return Helper.Deserialize(getSAR4C(addr)) as SARInfo;
                 }
                 //查询债仓详细操作记录
                 if (operation == "getSARTxInfo")
@@ -325,6 +330,16 @@ namespace SARContract
             return false;
         }
 
+        //checkState 1:normal  0:stop
+        private static bool checkState(string configKey) {
+            byte[] key = getConfigKey(configKey.AsByteArray());
+            StorageMap config = Storage.CurrentContext.CreateMap(nameof(config));
+            BigInteger value = config.Get(key).AsBigInteger();
+
+            if (value == 1) return true;
+            return false;
+        }
+
         private static bool migrateSAR4C(byte[] addr, SARInfo sar)
         {
             //SAR是否存在
@@ -372,16 +387,11 @@ namespace SARContract
             return (SARTransferDetail)Helper.Deserialize(v);
         }
 
-        private static SARInfo getSAR4C(byte[] addr)
+        private static byte[] getSAR4C(byte[] addr)
         {
             //SAR是否存在
             byte[] key = getSARKey(addr);
-            
-            byte[] sar = Storage.Get(Storage.CurrentContext, key);
-            if (sar.Length == 0)
-                return null;
-            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
-            return sarInfo;
+            return Storage.Get(Storage.CurrentContext, key);
         }
 
         private static Boolean rescue(byte[] otherAddr,byte[] addr,BigInteger mount)
@@ -398,13 +408,16 @@ namespace SARContract
             if (otherAddr.AsBigInteger() == addr.AsBigInteger()) return false;
 
             //SAR是否存在
-            byte[] key = getSARKey(otherAddr);
+            //check SAR
+            if (!checkState(SAR_STATE))
+                throw new InvalidOperationException("The sar state MUST not be pause.");
 
-            byte[] sar = Storage.Get(Storage.CurrentContext, key);
-            if (sar.Length == 0)
-                return false;
-            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
+            //check SAR
+            var key = getSARKey(otherAddr);
+            byte[] bytes = getSAR4C(otherAddr);
+            if (bytes.Length == 0) throw new InvalidOperationException("The sar can not be null.");
 
+            SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
             BigInteger lockedPneo = sarInfo.locked;
             BigInteger hasDrawed = sarInfo.hasDrawed;
             string assetType = sarInfo.assetType;
@@ -478,7 +491,7 @@ namespace SARContract
             }
 
             //拿到该有的SNEO
-            byte[] from = Storage.Get(Storage.CurrentContext, new byte[] { 0x15 }.Concat(STORAGE_ACCOUNT.AsByteArray()));
+            byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
             if (from.Length == 0) return false;
             {
                 object[] arg = new object[3];
@@ -514,9 +527,7 @@ namespace SARContract
             if (mount <= 0)
                 throw new InvalidOperationException("The parameter mount MUST be greater than 0.");
 
-            if (otherAddr.AsBigInteger() == addr.AsBigInteger()) return false;
-
-            BigInteger state =   Storage.Get(Storage.CurrentContext,getBondKey(addr)).AsBigInteger();
+            BigInteger state =  Storage.Get(Storage.CurrentContext,getBondKey(addr)).AsBigInteger();
 
             if (state != 1) return false;
 
@@ -632,19 +643,22 @@ namespace SARContract
             return true;
         }
 
-        private static BigInteger getConfig(string key)
+        private static BigInteger getConfig(string configKey)
         {
-            if (key == null || key == "") return 0;
-            return  Storage.Get(Storage.CurrentContext,key.AsByteArray()).AsBigInteger();
+            byte[] key = getConfigKey(configKey.AsByteArray());
+            StorageMap config = Storage.CurrentContext.CreateMap(nameof(config));
+
+            return config.Get(key).AsBigInteger();
         }
 
-        private static Boolean setConfig(string key, BigInteger value)
+        private static Boolean setConfig(string configKey, BigInteger value)
         {
-            if (key == null || key == "") return false;
             //只允许超管操作
             if (!Runtime.CheckWitness(admin)) return false;
 
-            Storage.Put(Storage.CurrentContext,key.AsByteArray(),value);
+            byte[] key = getConfigKey(configKey.AsByteArray());
+            StorageMap config = Storage.CurrentContext.CreateMap(nameof(config));
+            config.Put(key, value);
             return true;
         }
 
@@ -656,13 +670,16 @@ namespace SARContract
             if (mount <= 0)
                 throw new InvalidOperationException("The parameter mount MUST be greater than 0.");
 
-            //SAR是否存在
-            byte[] key = getSARKey(addr);
+            //check SAR
+            if (!checkState(SAR_STATE))
+                throw new InvalidOperationException("The sar state MUST not be pause.");
 
-            byte[] sar = Storage.Get(Storage.CurrentContext, key);
-            if (sar.Length == 0)
-                return false;
-            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
+            //check SAR
+            var key = getSARKey(addr);
+            byte[] bytes = getSAR4C(addr);
+            if (bytes.Length == 0) throw new InvalidOperationException("The sar can not be null.");
+
+            SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
 
             BigInteger locked = sarInfo.locked;
             BigInteger hasDrawed = sarInfo.hasDrawed;
@@ -710,14 +727,16 @@ namespace SARContract
             if (mount <= 0)
                 throw new InvalidOperationException("The parameter mount MUST be greater than 0.");
 
-            //SAR是否存在
-            byte[] key = getSARKey(addr);
+            //check SAR
+            if (!checkState(SAR_STATE))
+                throw new InvalidOperationException("The sar state MUST not be pause.");
 
-            byte[] sar = Storage.Get(Storage.CurrentContext, key);
-            if (sar.Length == 0)
-                return false;
+            //check SAR
+            var key = getSARKey(addr);
+            byte[] bytes = getSAR4C(addr);
+            if (bytes.Length == 0) throw new InvalidOperationException("The sar can not be null.");
 
-            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
+            SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
 
             BigInteger locked = sarInfo.locked;
             BigInteger hasDrawed = sarInfo.hasDrawed;
@@ -859,10 +878,9 @@ namespace SARContract
         private static Boolean openSAR4C(byte[] addr,string assetType)
         {
             //已经有SAR就不重新建
-            byte[] key = getSARKey(addr);
-            byte[] sar = Storage.Get(Storage.CurrentContext, key);
-            if (sar.Length > 0)
-                throw new InvalidOperationException("The SAR MUST be null.");
+            var key = getSARKey(addr);
+            byte[] bytes = getSAR4C(addr);
+            if (bytes.Length > 0) throw new InvalidOperationException("The sar can  be null.");
 
             //交易ID 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
@@ -906,13 +924,15 @@ namespace SARContract
 
             if (lockMount <= 0) 
                 throw new InvalidOperationException("The parameter lockMount MUST be greater than 0.");
-            //check SAR
-            var key = getSARKey(addr);
 
-            byte[] sar = Storage.Get(Storage.CurrentContext, key);
-            if (sar.Length == 0)
-                return false;
-            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
+            if (!checkState(SAR_STATE))
+                throw new InvalidOperationException("The sar state MUST not be pause.");
+
+            var key = getSARKey(addr);
+            byte[] bytes = getSAR4C(addr);
+            if (bytes.Length == 0) throw new InvalidOperationException("The sar can  be null.");
+
+            SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
 
             //assetType 
             string assetType =  sarInfo.assetType;
@@ -965,17 +985,21 @@ namespace SARContract
                 throw new InvalidOperationException("The parameter drawMount MUST be greater than 0.");
 
             //check SAR
-            var key = getSARKey(addr);
+            if (!checkState(SAR_STATE))
+                throw new InvalidOperationException("The sar state MUST not be pause.");
 
-            byte[] sar = Storage.Get(Storage.CurrentContext, key);
-            if (sar.Length == 0)
-                throw new InvalidOperationException("The sar MUST not be null.");
+            //check SAR
+            var key = getSARKey(addr);
+            byte[] bytes = getSAR4C(addr);
+            if (bytes.Length == 0) throw new InvalidOperationException("The sar can not be null.");
+
+            SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
 
             byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
             byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
 
 
-            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
+            //SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
 
             BigInteger locked = sarInfo.locked;
             BigInteger hasDrawed = sarInfo.hasDrawed;
@@ -1069,13 +1093,15 @@ namespace SARContract
             if (addr.Length != 20)
                 throw new InvalidOperationException("The parameter addr SHOULD be 20-byte addresses.");
 
-            //SAR是否存在
-            var key = getSARKey(addr);
+            //check SAR
+            if (!checkState(SAR_STATE))
+                throw new InvalidOperationException("The sar state MUST not be pause.");
 
-            byte[] sar = Storage.Get(Storage.CurrentContext, key);
-            if (sar.Length == 0)
-                return false;
-            SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
+            var key = getSARKey(addr);
+            byte[] bytes = getSAR4C(addr);
+            if (bytes.Length == 0) throw new InvalidOperationException("The sar can not be null.");
+
+            SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
 
             BigInteger locked = sarInfo.locked;
             BigInteger hasDrawed = sarInfo.hasDrawed;
@@ -1128,46 +1154,6 @@ namespace SARContract
 
             //notify
             Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_SHUT, 0);
-            return true;
-        }
-
-        private static bool give(byte[] fromAdd, byte[] toAdd)
-        {
-            //SAR是否存在
-            var keyFrom = getSARKey(fromAdd);
-
-            byte[] sar = Storage.Get(Storage.CurrentContext, keyFrom);
-            if (sar.Length == 0)
-                return false;
-            SARInfo fromSAR = (SARInfo)Helper.Deserialize(sar);
-
-            var keyTo = getSARKey(toAdd);
-            byte[] sarTo = Storage.Get(Storage.CurrentContext, keyTo);
-            if (sarTo.Length > 0)
-                return false;
-
-            //删除SAR
-            Storage.Delete(Storage.CurrentContext, keyFrom);
-
-            //设置新的SAR
-            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            fromSAR.owner = toAdd;
-            fromSAR.txid = txid;
-            Storage.Put(Storage.CurrentContext, keyTo, Helper.Serialize(fromSAR));
-
-            //记录操作信息
-            SARTransferDetail detail = new SARTransferDetail();
-            detail.from = toAdd;
-            detail.sarTxid = txid;
-            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_GIVE;
-            detail.operated = 0;
-            detail.hasLocked = fromSAR.locked;
-            detail.hasDrawed = fromSAR.hasDrawed;
-            detail.txid = txid;
-            Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
-
-            //触发操作事件
-            Operated(fromAdd, fromSAR.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_GIVE, 0);
             return true;
         }
 
