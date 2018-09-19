@@ -49,11 +49,16 @@ namespace SARContract
         //配置参数-GAS市场价格
         private const string CONFIG_PRICE_GAS = "gas_price";
 
+        //配置参数-SDS市场价格
+        private const string CONFIG_PRICE_SDS = "sds_price";
+
         //配置参数-清算比率，百分位，如90
         private const string CONFIG_CLEAR_RATE = "clear_rate";
 
         //最低抵押率
         private const string CONFIG_RATE_C = "liquidate_rate_c";
+
+        private const string CONFIG_FEE_C = "fee_rate_c";
 
         //最低抵押率
         private const string CONFIG_RESCUE_C = "resuce_rate_c";
@@ -85,6 +90,9 @@ namespace SARContract
         private const ulong SIX_POWER = 1000000;
 
         private const ulong TEN_POWER = 10000000000;
+
+        //一天的秒计数
+        private const uint ONE_DAY_SECOND = 86400;
 
         private static byte[] getSARKey(byte[] addr) => new byte[] { 0x12 }.Concat(addr);
 
@@ -688,6 +696,46 @@ namespace SARContract
             if (mount > hasDrawed) return false;
 
             byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
+            byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
+            byte[] sdsAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDS_ACCOUNT.AsByteArray()));
+            byte[] to = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+
+            //get asset price
+            BigInteger sdsPrice = 0;
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_PRICE_SDS;
+                sdsPrice = (BigInteger)OracleContract("getPrice", arg);
+            }
+
+            //乘以10的8次方后结果=》148  年化13，15秒的利率
+            BigInteger fee_rate = 148;
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_FEE_C;
+                fee_rate = (BigInteger)OracleContract("getConfig", arg);
+            }
+
+            //cal fee
+            uint blockHeight = Blockchain.GetHeight();
+            BigInteger fee = sarInfo.fee;
+
+            //有债仓,根据全量计算
+            uint lastHeight = sarInfo.lastHeight;
+            BigInteger currFee = (blockHeight - lastHeight) * hasDrawed * fee_rate / sdsPrice;
+
+            //需要收取的手续费
+            BigInteger needFee = mount * currFee/ hasDrawed;
+            if (needFee > 0) {
+                var SDSContract = (NEP5Contract)sdsAssetID.ToDelegate();
+                object[] arg = new object[3];
+                arg[0] = addr;
+                arg[1] = to;
+                arg[2] = needFee;
+                if (!(bool)SDSContract("transfer", arg)) return false;
+            }
 
             //减少金额
             {
@@ -698,21 +746,23 @@ namespace SARContract
                 if (!(bool)SDUSDContract("destory", arg)) return false;
             }
 
+            sarInfo.lastHeight = blockHeight;
+            sarInfo.fee = currFee - needFee;
             sarInfo.hasDrawed = hasDrawed - mount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
 
             //记录交易详细数据
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            SARTransferDetail detail = new SARTransferDetail();
-            detail.from = addr;
-            detail.sarTxid = sarInfo.txid;
-            detail.txid = txid;
-            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_WIPE;
-            detail.operated = mount;
-            detail.hasLocked = locked;
-            detail.hasDrawed = hasDrawed;
+            //SARTransferDetail detail = new SARTransferDetail();
+            //detail.from = addr;
+            //detail.sarTxid = sarInfo.txid;
+            //detail.txid = txid;
+            //detail.type = (int)ConfigTranType.TRANSACTION_TYPE_WIPE;
+            //detail.operated = mount;
+            //detail.hasLocked = locked;
+            //detail.hasDrawed = hasDrawed;
 
-            Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
+            //Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
 
             //触发操作事件
             Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_WIPE, mount);
@@ -1066,6 +1116,45 @@ namespace SARContract
 
             }
 
+            //get asset price
+            BigInteger sdsPrice = 0;
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_PRICE_SDS;
+                sdsPrice = (BigInteger)OracleContract("getPrice", arg);
+            }
+
+          
+            //乘以10的8次方后结果=》148  年化13，15秒的利率
+            BigInteger fee_rate = 148;   
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = CONFIG_FEE_C;
+                fee_rate = (BigInteger)OracleContract("getConfig", arg);
+            }
+
+            //cal fee
+            uint blockHeight = Blockchain.GetHeight();
+            BigInteger fee = sarInfo.fee;
+           
+            //无债仓不计算费用，记录区块
+            if (hasDrawed == 0)
+            {
+                sarInfo.lastHeight = blockHeight;
+                sarInfo.fee = 0;
+
+            }
+            else {
+                //有债仓,根据全量计算
+                uint lastHeight = sarInfo.lastHeight;
+                BigInteger currFee = (blockHeight - lastHeight) * hasDrawed * fee_rate / sdsPrice;
+
+                sarInfo.lastHeight = blockHeight;
+                sarInfo.fee = currFee + fee;
+
+            }
             sarInfo.hasDrawed = hasDrawed + drawMount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
 
@@ -1107,34 +1196,34 @@ namespace SARContract
             BigInteger hasDrawed = sarInfo.hasDrawed;
             string assetType = sarInfo.assetType;
 
+            if (hasDrawed > 0) throw new InvalidOperationException("The expand count must be 0.");
+
             byte[] nep5AssetID = Storage.Get(Storage.CurrentContext, getAccountKey(assetType.AsByteArray()));
             byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
-          
 
             byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
             if (from.Length == 0) return false;
 
-            if (hasDrawed > 0)
-            {
-                //销毁等量SDUSD
-                var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
-                object[] arg = new object[2];
-                arg[0] = addr;
-                arg[1] = hasDrawed;
-                if (!(bool)SDUSDContract("destory", arg)) return false;
-            }
+
+            //销毁等量SDUSD
+            //var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
+            //object[] arg = new object[2];
+            //arg[0] = addr;
+            //arg[1] = hasDrawed;
+            //if (!(bool)SDUSDContract("destory", arg)) return false;
+
 
             //返回相应的NEP5资产
-            if (locked > 0)
-            {
-                object[] arg = new object[3];
-                arg[0] = from;
-                arg[1] = addr;
-                arg[2] = locked;
-                var WContract = (NEP5Contract)nep5AssetID.ToDelegate();
+            //if (locked > 0)
+            //{
+            //    object[] arg = new object[3];
+            //    arg[0] = from;
+            //    arg[1] = addr;
+            //    arg[2] = locked;
+            //    var WContract = (NEP5Contract)nep5AssetID.ToDelegate();
 
-                if (!(bool)WContract("transfer", arg)) return false;
-            }
+            //    if (!(bool)WContract("transfer", arg)) return false;
+            //}
 
             //delete sar
             Storage.Delete(Storage.CurrentContext, key);
@@ -1190,6 +1279,12 @@ namespace SARContract
 
             //Bond锁定的SDUSD
             public BigInteger bondDrawed;
+
+            //最新expande操作的区块高度
+            public uint lastHeight;
+
+            //手续费总量 sds
+            public BigInteger fee;
            
         }
 
