@@ -30,21 +30,8 @@ namespace SDUSD
 
         private const string TOTAL_SUPPLY = "totalSupply";
 
-        private const string TOTAL_GENERATE = "totalGenerate";
-
         //合约收款账户
         private const string STORAGE_ACCOUNT = "storage_account";
-
-        //SDS合约账户
-        //private const string SDS_ACCOUNT = "sds_account";
-
-        //Oracle合约账户
-        //private const string ORACLE_ACCOUNT = "oracle_account";
-
-        //SNEO合约账户
-        //private const string WASSET_ACCOUNT = "wasset_account";
-
-        //private const ulong SIX_POWER = 1000000;
 
         private static byte[] getAccountKey(byte[] account) => new byte[] { 0x15 }.Concat(account);
 
@@ -133,7 +120,7 @@ namespace SDUSD
                     byte[] addr = (byte[])args[0];
                     BigInteger value = (BigInteger)args[1];
 
-                    //if (!Runtime.CheckWitness(addr)) return false;
+                    if (!Runtime.CheckWitness(addr)) return false;
 
                     //判断调用者是否是授权合约
                     if (getAccount(callscript) != 1) return false;
@@ -146,12 +133,52 @@ namespace SDUSD
                     byte[] addr = (byte[])args[0];
                     BigInteger value = (BigInteger)args[1];
 
-                    //if (!Runtime.CheckWitness(addr)) return false;
+                    if (!Runtime.CheckWitness(addr)) return false;
 
                     //判断调用者是否是授权合约
                     if (getAccount(callscript) != 1) return false;
                     return destory(addr,value);
                 }
+                #region 升级合约,耗费490,仅限管理员
+                if (operation == "upgrade")
+                {
+                    //不是管理员 不能操作
+                    if (!Runtime.CheckWitness(admin))
+                        return false;
+
+                    if (args.Length != 1 && args.Length != 9)
+                        return false;
+
+                    byte[] script = Blockchain.GetContract(ExecutionEngine.ExecutingScriptHash).Script;
+                    byte[] new_script = (byte[])args[0];
+                    //如果传入的脚本一样 不继续操作
+                    if (script == new_script)
+                        return false;
+
+                    byte[] parameter_list = new byte[] { 0x07, 0x10 };
+                    byte return_type = 0x05;
+                    bool need_storage = (bool)(object)05;
+                    string name = "sdusd";
+                    string version = "1";
+                    string author = "alchemint";
+                    string email = "0";
+                    string description = "sdusd";
+
+                    if (args.Length == 9)
+                    {
+                        parameter_list = (byte[])args[1];
+                        return_type = (byte)args[2];
+                        need_storage = (bool)args[3];
+                        name = (string)args[4];
+                        version = (string)args[5];
+                        author = (string)args[6];
+                        email = (string)args[7];
+                        description = (string)args[8];
+                    }
+                    Contract.Migrate(new_script, parameter_list, return_type, need_storage, name, version, author, email, description);
+                    return true;
+                }
+                #endregion
 
             }
             return false;

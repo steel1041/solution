@@ -24,7 +24,7 @@ namespace SARContract
 
         public delegate object NEP5Contract(string method, object[] args);
 
-        //超级管理员账户
+        //管理员账户
         private static readonly byte[] admin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
         //因子
@@ -117,7 +117,8 @@ namespace SARContract
             TRANSACTION_TYPE_RESUCE,//清算其它债仓
             TRANSACTION_TYPE_GIVE,//转移所有权
             TRANSACTION_TYPE_BOND_RESUCE,//bond
-            TRANSACTION_TYPE_BOND_WITHDRAW
+            TRANSACTION_TYPE_BOND_WITHDRAW,
+            TRANSACTION_TYPE_RECHARGE
         }
 
 
@@ -228,6 +229,18 @@ namespace SARContract
 
                     return reserve(addr, mount);
                 }
+                //locked sds asset
+                if (operation == "recharge")
+                {
+                    if (args.Length != 2) return false;
+                    byte[] addr = (byte[])args[0];
+                    //SDS Asset mount 
+                    BigInteger mount = (BigInteger)args[1];
+
+                    if (!Runtime.CheckWitness(addr)) return false;
+
+                    return recharge(addr, mount);
+                }
                 //get SDUSD
                 if (operation == "expande")
                 {
@@ -333,6 +346,46 @@ namespace SARContract
                     if (!Runtime.CheckWitness(admin)) return false;
                     return removeBondAccount(address);
                 }
+                #region 升级合约,耗费990,仅限管理员
+                if (operation == "upgrade")
+                {
+                    //不是管理员 不能操作
+                    if (!Runtime.CheckWitness(admin))
+                        return false;
+
+                    if (args.Length != 1 && args.Length != 9)
+                        return false;
+
+                    byte[] script = Blockchain.GetContract(ExecutionEngine.ExecutingScriptHash).Script;
+                    byte[] new_script = (byte[])args[0];
+                    //如果传入的脚本一样 不继续操作
+                    if (script == new_script)
+                        return false;
+
+                    byte[] parameter_list = new byte[] { 0x07, 0x10 };
+                    byte return_type = 0x05;
+                    bool need_storage = (bool)(object)07;
+                    string name = "sar";
+                    string version = "1";
+                    string author = "alchemint";
+                    string email = "0";
+                    string description = "sar";
+
+                    if (args.Length == 9)
+                    {
+                        parameter_list = (byte[])args[1];
+                        return_type = (byte)args[2];
+                        need_storage = (bool)args[3];
+                        name = (string)args[4];
+                        version = (string)args[5];
+                        author = (string)args[6];
+                        email = (string)args[7];
+                        description = (string)args[8];
+                    }
+                    Contract.Migrate(new_script, parameter_list, return_type, need_storage, name, version, author, email, description);
+                    return true;
+                }
+                #endregion
 
             }
             return false;
@@ -721,6 +774,7 @@ namespace SARContract
             //cal fee
             uint blockHeight = Blockchain.GetHeight();
             BigInteger fee = sarInfo.fee;
+            BigInteger sdsFree = sarInfo.sdsFee;
 
             //有债仓,根据全量计算
             uint lastHeight = sarInfo.lastHeight;
@@ -728,14 +782,9 @@ namespace SARContract
 
             //需要收取的手续费
             BigInteger needFee = mount * currFee/ hasDrawed;
-            if (needFee > 0) {
-                var SDSContract = (NEP5Contract)sdsAssetID.ToDelegate();
-                object[] arg = new object[3];
-                arg[0] = addr;
-                arg[1] = to;
-                arg[2] = needFee;
-                if (!(bool)SDSContract("transfer", arg)) return false;
-            }
+
+            //手续费不够扣
+            if (needFee > sdsFree) return false;
 
             //减少金额
             {
@@ -748,21 +797,22 @@ namespace SARContract
 
             sarInfo.lastHeight = blockHeight;
             sarInfo.fee = currFee - needFee;
+            sarInfo.sdsFee = sdsFree - needFee;
             sarInfo.hasDrawed = hasDrawed - mount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
 
             //记录交易详细数据
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            //SARTransferDetail detail = new SARTransferDetail();
-            //detail.from = addr;
-            //detail.sarTxid = sarInfo.txid;
-            //detail.txid = txid;
-            //detail.type = (int)ConfigTranType.TRANSACTION_TYPE_WIPE;
-            //detail.operated = mount;
-            //detail.hasLocked = locked;
-            //detail.hasDrawed = hasDrawed;
+            SARTransferDetail detail = new SARTransferDetail();
+            detail.from = addr;
+            detail.sarTxid = sarInfo.txid;
+            detail.txid = txid;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_WIPE;
+            detail.operated = mount;
+            detail.hasLocked = locked;
+            detail.hasDrawed = hasDrawed;
 
-            //Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
+            Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
 
             //触发操作事件
             Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_WIPE, mount);
@@ -1026,6 +1076,64 @@ namespace SARContract
             return true;
         }
 
+        private static Boolean recharge(byte[] addr, BigInteger mount)
+        {
+            if (addr.Length != 20)
+                throw new InvalidOperationException("The parameter addr SHOULD be 20-byte addresses.");
+
+            if (mount <= 0)
+                throw new InvalidOperationException("The parameter mount MUST be greater than 0.");
+
+            if (!checkState(SAR_STATE))
+                throw new InvalidOperationException("The sar state MUST not be pause.");
+
+            var key = getSARKey(addr);
+            byte[] bytes = getSAR4C(addr);
+            if (bytes.Length == 0) throw new InvalidOperationException("The sar can not be null.");
+
+            SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
+
+            //get nep5 asset
+            byte[] sdsAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDS_ACCOUNT.AsByteArray()));
+
+            //current account
+            byte[] to = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+            if (to.Length == 0)
+                throw new InvalidOperationException("The parameter to SHOULD be greater than 0.");
+
+            object[] arg = new object[3];
+            arg[0] = addr;
+            arg[1] = to;
+            arg[2] = mount;
+
+            var AssetContract = (NEP5Contract)sdsAssetID.ToDelegate();
+
+            if (!(bool)AssetContract("transfer", arg)) return false;
+
+            //设置充值的SDS数量
+            BigInteger sdsFee = sarInfo.sdsFee;
+            sarInfo.sdsFee = sdsFee + mount;
+
+            Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
+
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+
+            //记录交易详细数据
+            SARTransferDetail detail = new SARTransferDetail();
+            detail.from = addr;
+            detail.sarTxid = sarInfo.txid;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_RECHARGE;
+            detail.operated = mount;
+            detail.hasLocked = sarInfo.locked;
+            detail.hasDrawed = sarInfo.hasDrawed;
+            detail.txid = txid;
+            Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
+
+            //触发操作事件
+            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_RECHARGE, mount);
+            return true;
+        }
+
         private static Boolean expande(byte[] addr, BigInteger drawMount)
         {
             if (addr.Length != 20)
@@ -1047,9 +1155,6 @@ namespace SARContract
 
             byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
             byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
-
-
-            //SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
 
             BigInteger locked = sarInfo.locked;
             BigInteger hasDrawed = sarInfo.hasDrawed;
@@ -1104,7 +1209,6 @@ namespace SARContract
             if (totalSupply + drawMount > releaseMax)
                 throw new InvalidOperationException("The sar can draw larger than releaseMax.");
 
-
             //increase sdusd
             {
                 var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
@@ -1113,7 +1217,6 @@ namespace SARContract
                 arg[1] = drawMount;
                 if (!(bool)SDUSDContract("increase", arg))
                     throw new InvalidOperationException("The sdusd increased error.");
-
             }
 
             //get asset price
@@ -1145,8 +1248,7 @@ namespace SARContract
                 sarInfo.lastHeight = blockHeight;
                 sarInfo.fee = 0;
 
-            }
-            else {
+            }else {
                 //有债仓,根据全量计算
                 uint lastHeight = sarInfo.lastHeight;
                 BigInteger currFee = (blockHeight - lastHeight) * hasDrawed * fee_rate / sdsPrice;
@@ -1197,33 +1299,6 @@ namespace SARContract
             string assetType = sarInfo.assetType;
 
             if (hasDrawed > 0) throw new InvalidOperationException("The expand count must be 0.");
-
-            byte[] nep5AssetID = Storage.Get(Storage.CurrentContext, getAccountKey(assetType.AsByteArray()));
-            byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
-
-            byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
-            if (from.Length == 0) return false;
-
-
-            //销毁等量SDUSD
-            //var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
-            //object[] arg = new object[2];
-            //arg[0] = addr;
-            //arg[1] = hasDrawed;
-            //if (!(bool)SDUSDContract("destory", arg)) return false;
-
-
-            //返回相应的NEP5资产
-            //if (locked > 0)
-            //{
-            //    object[] arg = new object[3];
-            //    arg[0] = from;
-            //    arg[1] = addr;
-            //    arg[2] = locked;
-            //    var WContract = (NEP5Contract)nep5AssetID.ToDelegate();
-
-            //    if (!(bool)WContract("transfer", arg)) return false;
-            //}
 
             //delete sar
             Storage.Delete(Storage.CurrentContext, key);
@@ -1285,6 +1360,9 @@ namespace SARContract
 
             //手续费总量 sds
             public BigInteger fee;
+
+            //充值的SDS手续费
+            public BigInteger sdsFee;
            
         }
 

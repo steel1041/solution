@@ -30,24 +30,8 @@ namespace SNeoContract
 
         public delegate object NEP5Contract(string method, object[] args);
 
-
-        //配置参数-NEO市场价格
-        private const string CONFIG_PRICE_NEO = "neo_price";
-
-        //配置参数-GAS市场价格
-        private const string CONFIG_PRICE_GAS = "gas_price";
-
-        //合约收款账户
-        private const string STORAGE_ACCOUNT = "storage_account";
-
-        //SDS合约账户
-        private const string SDS_ACCOUNT = "sds_account";
-
-        //Oracle合约账户
-        private const string ORACLE_ACCOUNT = "oracle_account";
-
         //管理员账户
-        //private static readonly byte[] admin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7"); 
+        private static readonly byte[] admin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
         //因子
         private const ulong factor = 100000000;
@@ -209,6 +193,46 @@ namespace SNeoContract
                     string type = (string)args[0];
                     return mintTokens(type);
                 }
+                #region 升级合约,耗费490,仅限管理员
+                if (operation == "upgrade")
+                {
+                    //不是管理员 不能操作
+                    if (!Runtime.CheckWitness(admin))
+                        return false;
+
+                    if (args.Length != 1 && args.Length != 9)
+                        return false;
+
+                    byte[] script = Blockchain.GetContract(ExecutionEngine.ExecutingScriptHash).Script;
+                    byte[] new_script = (byte[])args[0];
+                    //如果传入的脚本一样 不继续操作
+                    if (script == new_script)
+                        return false;
+
+                    byte[] parameter_list = new byte[] { 0x07, 0x10 };
+                    byte return_type = 0x05;
+                    bool need_storage = (bool)(object)05;
+                    string name = "sneo";
+                    string version = "1";
+                    string author = "alchemint";
+                    string email = "0";
+                    string description = "sneo";
+
+                    if (args.Length == 9)
+                    {
+                        parameter_list = (byte[])args[1];
+                        return_type = (byte)args[2];
+                        need_storage = (bool)args[3];
+                        name = (string)args[4];
+                        version = (string)args[5];
+                        author = (string)args[6];
+                        email = (string)args[7];
+                        description = (string)args[8];
+                    }
+                    Contract.Migrate(new_script, parameter_list, return_type, need_storage, name, version, author, email, description);
+                    return true;
+                }
+                #endregion
             }
             return false;
         }
