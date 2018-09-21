@@ -57,7 +57,7 @@ namespace SDUSD
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-09-05 16:40:10";
+            var magicstr = "2018-09-21 16:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -120,7 +120,7 @@ namespace SDUSD
                     byte[] addr = (byte[])args[0];
                     BigInteger value = (BigInteger)args[1];
 
-                    if (!Runtime.CheckWitness(addr)) return false;
+                    //if (!Runtime.CheckWitness(addr)) return false;
 
                     //判断调用者是否是授权合约
                     if (getAccount(callscript) != 1) return false;
@@ -133,7 +133,7 @@ namespace SDUSD
                     byte[] addr = (byte[])args[0];
                     BigInteger value = (BigInteger)args[1];
 
-                    if (!Runtime.CheckWitness(addr)) return false;
+                    //if (!Runtime.CheckWitness(addr)) return false;
 
                     //判断调用者是否是授权合约
                     if (getAccount(callscript) != 1) return false;

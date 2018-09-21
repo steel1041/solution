@@ -138,7 +138,7 @@ namespace SARContract
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-09-17 18:40:10";
+            var magicstr = "2018-09-21 10:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -475,7 +475,7 @@ namespace SARContract
 
             //check SAR
             var key = getSARKey(otherAddr);
-            byte[] bytes = getSAR4C(otherAddr);
+            byte[] bytes = Storage.Get(Storage.CurrentContext, key);
             if (bytes.Length == 0) throw new InvalidOperationException("The sar can not be null.");
 
             SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
@@ -493,52 +493,61 @@ namespace SARContract
             if (mount > hasDrawed) return false;
 
             //当前NEP5美元价格，需要从价格中心获取
-            BigInteger neoPrice = 0;
+            BigInteger nep5Price = 0;
             {
                 var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
                 object[] arg = new object[1];
-                arg[0] = nep5AssetID;
-                neoPrice = (BigInteger)OracleContract("getPrice", arg);
+                arg[0] = assetType;
+                nep5Price = (BigInteger)OracleContract("getPrice", arg);
             }
 
             //当前兑换率，需要从配置中心获取
-            BigInteger rate = 150;
-            {
-                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-                object[] arg = new object[1];
-                arg[0] = CONFIG_RATE_C;
-                rate = (BigInteger)OracleContract("getConfig", arg);
-            }
+            BigInteger rate = 0;
+            //{
+            //    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+            //    object[] arg = new object[1];
+            //    arg[0] = CONFIG_RATE_C;
+            //    rate = (BigInteger)OracleContract("getConfig", arg);
+            //}
 
             //当前清算折扣比例，需要从配置中心获取
-            BigInteger rateClear = 90;
+            BigInteger rateClear = 0;
+            //{
+            //    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+            //    object[] arg = new object[1];
+            //    arg[0] = CONFIG_CLEAR_RATE;
+            //    rateClear = (BigInteger)OracleContract("getConfig", arg);
+            //}
+
+            //清算最低兑换率，需要从配置中心获取
+            BigInteger rescueRate = 0;
+            //{
+            //    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+            //    object[] arg = new object[1];
+            //    arg[0] = CONFIG_RESCUE_C;
+            //    rescueRate = (BigInteger)OracleContract("getConfig", arg);
+            //}
+
             {
                 var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
                 object[] arg = new object[1];
-                arg[0] = CONFIG_CLEAR_RATE;
-                rateClear = (BigInteger)OracleContract("getConfig", arg);
+                arg[0] = assetType;
+                Config config = (Config)OracleContract("getStructConfig", arg);
+                rate = config.liquidate_rate_c;
+                rateClear = config.clear_rate;
+                rescueRate = config.resuce_rate_c;
             }
-
             //计算是否需要清算 乘以10000的值 如1.5 => 15000
-            BigInteger currentRate = lockedPneo * neoPrice / (hasDrawed * 10000);
+            BigInteger currentRate = lockedPneo * nep5Price / (hasDrawed * 10000);
             if (currentRate > rate * 100) return false;
 
             //计算可以拿到的SNEO资产
-            BigInteger canClearPneo = mount* TEN_POWER / (neoPrice * rateClear);
+            BigInteger canClearPneo = mount* TEN_POWER / (nep5Price * rateClear);
 
             if (canClearPneo > lockedPneo) return false;
 
             //清算部分后的抵押率 如：160
-            BigInteger lastRate = (lockedPneo - canClearPneo) * neoPrice / ((hasDrawed - mount) * SIX_POWER);
-
-            //清算最低兑换率，需要从配置中心获取
-            BigInteger rescueRate = 160;
-            {
-                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-                object[] arg = new object[1];
-                arg[0] = CONFIG_RESCUE_C;
-                rescueRate = (BigInteger)OracleContract("getConfig", arg);
-            }
+            BigInteger lastRate = (lockedPneo - canClearPneo) * nep5Price / ((hasDrawed - mount) * SIX_POWER);     
 
             if (lastRate > rescueRate) return false;
 
@@ -551,7 +560,7 @@ namespace SARContract
                 if(!(bool)SDUSDContract("destory", arg)) return false;
             }
 
-            //拿到该有的SNEO
+            //拿到该有的NEP5
             byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
             if (from.Length == 0) return false;
             {
@@ -1401,5 +1410,35 @@ namespace SARContract
             public int type;
         }
 
+        public class Config
+        {
+            //B端抵押率   50
+            public BigInteger liquidate_rate_b;
+
+            //C端抵押率  150
+            public BigInteger liquidate_rate_c;
+
+            //C端清算折扣  90
+            public BigInteger clear_rate;
+
+            //C端费用率  15秒的费率 乘以10的8次方  148
+            public BigInteger fee_rate_c;
+
+            //C端最高可清算抵押率  160
+            public BigInteger resuce_rate_c;
+
+            //C端伺机者可清算抵押率 120
+            public BigInteger bond_rate_c;
+
+            //C端发行费用 1
+            public BigInteger release_rate_c;
+
+            //B端发行费用  1000000000
+            public BigInteger service_fee;
+
+            //C端最大发行量  1000000000000
+            public BigInteger release_max_c;
+
+        }
     }
 }
