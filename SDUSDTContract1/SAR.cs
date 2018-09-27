@@ -74,6 +74,8 @@ namespace SARContract
 
         private const string SAR_STATE = "sar_state";
 
+        private const string BOND_ISSUED_GLOBAL = "bondIssuedGlobal";
+
         private const ulong SIX_POWER = 1000000;
 
         private const ulong TEN_POWER = 10000000000;
@@ -90,6 +92,7 @@ namespace SARContract
 
         private static byte[] getRescueKey(byte[] assetType,byte[] addr) => new byte[] { 0x18}.Concat(assetType).Concat(addr);
 
+        private static byte[] getBondGlobalKey(byte[] key)=> new byte[] { 0x19 }.Concat(key);
 
         //交易类型
         public enum ConfigTranType {
@@ -358,6 +361,10 @@ namespace SARContract
 
                     return getRescue(assetType,addr);
                 }
+                if (operation == "getBondGlobal")
+                {
+                    return getBondGlobal();
+                }
                 //签收rescue余额
                 if (operation == "claimRescue")
                 {
@@ -459,6 +466,13 @@ namespace SARContract
             return false;
         }
 
+        private static BigInteger getBondGlobal()
+        {
+            byte[] bondKey = getBondGlobalKey(BOND_ISSUED_GLOBAL.AsByteArray());
+            BigInteger total = Storage.Get(Storage.CurrentContext, bondKey).AsBigInteger();
+            return total;
+        }
+
         private static bool claimFee(byte[] addr)
         {
             if (addr.Length != 20)
@@ -470,7 +484,8 @@ namespace SARContract
 
             var key = getSARKey(addr);
             byte[] bytes = getSAR4C(addr);
-            if (bytes.Length == 0) throw new InvalidOperationException("The sar can not be null.");
+            if (bytes.Length == 0)
+                throw new InvalidOperationException("The sar can not be null.");
 
             SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
             BigInteger sdsFee = sarInfo.sdsFee;
@@ -484,14 +499,15 @@ namespace SARContract
                 arg[1] = addr;
                 arg[2] = sdsFee;
                 var nep5Contract = (NEP5Contract)sdsAsset.ToDelegate();
-                if (!(bool)nep5Contract("transfer_contract", arg)) return false;
+                if (!(bool)nep5Contract("transfer_contract", arg))
+                    throw new InvalidOperationException("The transfer is exception.");
             }
             sarInfo.sdsFee = 0;
             Storage.Put(Storage.CurrentContext,key,Helper.Serialize(sarInfo));
 
-            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            //var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             //notify
-            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_CLAIMFEE, sdsFee);
+            //Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_CLAIMFEE, sdsFee);
             return true;
         }
 
@@ -501,8 +517,8 @@ namespace SARContract
                 throw new InvalidOperationException("The parameter addr SHOULD be 20-byte addresses.");
 
             //check SAR 
-            if (checkState(SAR_STATE))
-                throw new InvalidOperationException("The sar state MUST be pause.");
+            //if (checkState(SAR_STATE))
+                //throw new InvalidOperationException("The sar state MUST be pause.");
 
             //check SAR
             var key = getSARKey(addr);
@@ -742,7 +758,6 @@ namespace SARContract
             if (mount > hasDrawed)
                 throw new InvalidOperationException("The param is exception.");
 
-
             //当前NEP5美元价格，需要从价格中心获取
             BigInteger nep5Price = 0;
             {
@@ -752,13 +767,11 @@ namespace SARContract
                 nep5Price = (BigInteger)OracleContract("getTypeB", arg);
             }
 
-            //当前兑换率，需要从配置中心获取
+            //当前兑换率
             BigInteger rate = 0;
-          
-            //当前清算折扣比例，需要从配置中心获取
+            //当前清算折扣比例
             BigInteger rateClear = 0;
-           
-            //清算最低兑换率，需要从配置中心获取
+            //清算最低兑换率
             BigInteger rescueRate = 0;
           
             {
@@ -782,7 +795,7 @@ namespace SARContract
                 throw new InvalidOperationException("The param is exception.");
 
             if (canClearNeo > lockedNeo)
-                throw new InvalidOperationException("The param is exception.");
+                canClearNeo = lockedNeo;
 
             //清算部分后的抵押率 如：160
             BigInteger lastRate = (lockedNeo - canClearNeo) * nep5Price / ((hasDrawed - mount) * SIX_POWER);     
@@ -822,7 +835,7 @@ namespace SARContract
         }
 
         //Bond 
-        private static Boolean rescueT(byte[] otherAddr, byte[] addr, BigInteger mount)
+        private static Boolean rescueT(byte[] otherAddr, byte[] addr, BigInteger bondMount)
         {
             if (addr.Length != 20)
                 throw new InvalidOperationException("The parameter addr SHOULD be 20-byte addresses.");
@@ -830,25 +843,31 @@ namespace SARContract
             if (otherAddr.Length != 20)
                 throw new InvalidOperationException("The parameter otherAddr SHOULD be 20-byte addresses.");
 
-            if (mount <= 0)
+            if(otherAddr.AsBigInteger() != addr.AsBigInteger())
+                throw new InvalidOperationException("The parameter is exception.");
+
+            if (bondMount <= 0)
                 throw new InvalidOperationException("The parameter mount MUST be greater than 0.");
 
-            BigInteger state = Storage.Get(Storage.CurrentContext,getBondKey(addr)).AsBigInteger();
+            //check state
+            if (!checkState(SAR_STATE))
+                throw new InvalidOperationException("The sar state MUST not be pause.");
 
+            BigInteger state = Storage.Get(Storage.CurrentContext,getBondKey(addr)).AsBigInteger();
             if (state != 1)
                 throw new InvalidOperationException("The state is exception.");
 
             //SAR是否存在
             byte[] key = getSARKey(otherAddr);
-
             byte[] sar = Storage.Get(Storage.CurrentContext, key);
             if (sar.Length == 0)
-                throw new InvalidOperationException("The sar is not exist.");
+                throw new InvalidOperationException("The sar can not be null.");
 
             SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
-
-            BigInteger lockedPneo = sarInfo.locked;
+            BigInteger lockedNeo = sarInfo.locked;
             BigInteger hasDrawed = sarInfo.hasDrawed;
+            BigInteger bondLocked = sarInfo.bondLocked;
+            BigInteger bondDrawed = sarInfo.bondDrawed;
             string assetType = sarInfo.assetType;
 
             byte[] nep5AssetID = Storage.Get(Storage.CurrentContext, getAccountKey(assetType.AsByteArray()));
@@ -858,7 +877,7 @@ namespace SARContract
             if (hasDrawed <= 0)
                 throw new InvalidOperationException("The param is exception.");
 
-            if (mount > hasDrawed)
+            if (bondMount > hasDrawed)
                 throw new InvalidOperationException("The param is exception.");
 
             //当前NEP5美元价格，需要从价格中心获取
@@ -872,79 +891,68 @@ namespace SARContract
 
             //当前兑换率，需要从配置中心获取
             BigInteger rate = 0;
-
-            //当前清算折扣比例，需要从配置中心获取
-            BigInteger rateClear = 0;
-
             //清算最低兑换率，需要从配置中心获取
             BigInteger rescueRate = 0;
-
             {
                 var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
                 object[] arg = new object[1];
                 arg[0] = assetType;
                 Config config = (Config)OracleContract("getStructConfig", arg);
-                rate = config.liquidate_line_rateT_c;
-                rateClear = config.liquidate_dis_rate_c;
+                rate = config.liquidate_line_rate_c;
                 rescueRate = config.liquidate_top_rate_c;
             }
 
-            //计算是否需要清算 乘以10000的值 如1.2 => 12000
-            BigInteger currentRate = lockedPneo * nep5Price / (hasDrawed * 10000);
+            //计算是否需要清算 乘以10000的值 如1.5 => 15000
+            BigInteger currentRate = lockedNeo * nep5Price / (hasDrawed * 10000);
             if (currentRate > rate * 100)
                 throw new InvalidOperationException("The param is exception.");
 
-            //计算可以拿到的SNEO资产
-            BigInteger canClearPneo = mount * TEN_POWER / (nep5Price * rateClear);
+            if (currentRate <= 100) {
+                if(bondMount != hasDrawed)
+                    throw new InvalidOperationException("The param is exception.");
+            }
 
-            if (canClearPneo > lockedPneo)
-                throw new InvalidOperationException("The param is exception.");
+            //计算可以拿到的SNEO资产
+            BigInteger canClearNeo = bondMount * TEN_POWER / nep5Price;
 
             //清算部分后的抵押率 如：160
-            BigInteger lastRate = (lockedPneo - canClearPneo) * nep5Price / ((hasDrawed - mount) * SIX_POWER);
+            BigInteger lastRate = (lockedNeo - canClearNeo) * nep5Price / ((hasDrawed-bondDrawed) * SIX_POWER);
 
             if (lastRate > rescueRate)
                 throw new InvalidOperationException("The param is exception.");
 
-            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-
             //真正开始Bond操作
-            //当前地址SAR是否存在
-            byte[] currKey = getSARKey(addr);
-
-            byte[] currSar = Storage.Get(Storage.CurrentContext, currKey);
-            SARInfo currSarInfo = null;
-            if (currSar.Length == 0)
+            if (canClearNeo > lockedNeo)
             {
-                currSarInfo = new SARInfo();
-                currSarInfo.owner = addr;
-                currSarInfo.txid = txid;
-                currSarInfo.hasDrawed = 0;
-                currSarInfo.locked = 0;
-                currSarInfo.status = 1;
-                currSarInfo.assetType = sarInfo.assetType;
-                currSarInfo.bondLocked = canClearPneo;
-                currSarInfo.bondDrawed = mount;
-                //触发操作事件
-                Operated(addr, currSarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_OPEN,0);
+                sarInfo.locked = 0;
             }
             else
             {
-                currSarInfo = (SARInfo)Helper.Deserialize(currSar);
-                BigInteger bondLocked = currSarInfo.bondLocked;
-                BigInteger bondDrawed = currSarInfo.bondDrawed;
-
-                currSarInfo.bondLocked = bondLocked + canClearPneo;
-                currSarInfo.bondDrawed = bondDrawed + mount;
+                sarInfo.locked = lockedNeo - canClearNeo;
             }
-            Storage.Put(Storage.CurrentContext, currKey, Helper.Serialize(currSarInfo));
-
-            sarInfo.locked = lockedPneo - canClearPneo;
-            sarInfo.hasDrawed = hasDrawed - mount;
+            sarInfo.hasDrawed = hasDrawed - bondDrawed;
+            sarInfo.bondLocked = bondLocked + canClearNeo;
+            sarInfo.bondDrawed = bondDrawed + bondMount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
 
+            //记录Bond总量
+            byte[] bondKey = getBondGlobalKey(BOND_ISSUED_GLOBAL.AsByteArray());
+            BigInteger total = Storage.Get(Storage.CurrentContext,bondKey).AsBigInteger();
+            Storage.Put(Storage.CurrentContext,bondKey,total + bondMount);
+
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            //记录交易详细数据
+            SARTransferDetail detail = new SARTransferDetail();
+            detail.from = addr;
+            detail.sarTxid = sarInfo.txid;
+            detail.txid = txid;
+            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_BOND_RESUCE;
+            detail.operated = bondMount;
+            detail.hasLocked = sarInfo.locked;
+            detail.hasDrawed = sarInfo.hasDrawed;
+            Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
             //触发操作事件
-            Operated(addr, currSarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_BOND_RESUCE, mount);
+            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_BOND_RESUCE, bondMount);
             return true;
         }
 
@@ -1150,14 +1158,18 @@ namespace SARContract
             return true;
         }
 
-
         private static Boolean withdrawT(byte[] addr, BigInteger mount)
         {
             if (addr.Length != 20)
                 throw new InvalidOperationException("The parameter addr SHOULD be 20-byte addresses.");
 
+            //SD的数量
             if (mount <= 0)
                 throw new InvalidOperationException("The parameter mount MUST be greater than 0.");
+
+            //check SAR
+            if (!checkState(SAR_STATE))
+                throw new InvalidOperationException("The sar state MUST not be pause.");
 
             //SAR是否存在
             byte[] key = getSARKey(addr);
@@ -1167,10 +1179,20 @@ namespace SARContract
                 throw new InvalidOperationException("The param is exception.");
             SARInfo sarInfo = (SARInfo)Helper.Deserialize(sar);
 
-            BigInteger locked = sarInfo.bondLocked;
-            BigInteger hasDrawed = sarInfo.bondDrawed;
-
+            BigInteger locked = sarInfo.locked;
+            BigInteger bondLocked = sarInfo.bondLocked;
+            BigInteger bondDrawed = sarInfo.bondDrawed;
+            BigInteger hasDrawed = sarInfo.hasDrawed;
             string assetType = sarInfo.assetType;
+
+            if (bondDrawed <=0 )
+                throw new InvalidOperationException("The param is exception.");
+
+            if (bondLocked <= 0)
+                throw new InvalidOperationException("The param is exception.");
+
+            if (mount > bondDrawed)
+                throw new InvalidOperationException("The param is exception.");
 
             byte[] nep5AssetID = Storage.Get(Storage.CurrentContext, getAccountKey(assetType.AsByteArray()));
             byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
@@ -1179,34 +1201,20 @@ namespace SARContract
             if (from.Length == 0)
                 throw new InvalidOperationException("The param is exception.");
 
-            //释放的总量大于已经剩余，不能操作
-            if (mount > locked)
-                throw new InvalidOperationException("The param is exception.");
-
             //需要消耗的SDUSD
-            BigInteger needConsume = hasDrawed * mount / locked;
-            {
-                var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
-                object[] arg = new object[2];
-                arg[0] = addr;
-                arg[1] = needConsume;
-                if (!(bool)SDUSDContract("destory", arg)) return false;
-            }
-
-            {
-                object[] arg = new object[3];
-                arg[0] = from;
-                arg[1] = addr;
-                arg[2] = mount;
-                var nep5Contract = (NEP5Contract)nep5AssetID.ToDelegate();
-                if (!(bool)nep5Contract("transfer", arg)) return false;
-            }
+            BigInteger canNeo = bondLocked * mount / bondDrawed;
 
             //重新设置锁定量
-            sarInfo.bondLocked = locked - mount;
-            sarInfo.bondDrawed = hasDrawed - needConsume;
-
+            sarInfo.locked = locked + canNeo;
+            sarInfo.hasDrawed = hasDrawed + mount;
+            sarInfo.bondLocked = bondLocked - canNeo;
+            sarInfo.bondDrawed = bondDrawed - mount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
+
+            //记录Bond总量
+            byte[] bondKey = getBondGlobalKey(BOND_ISSUED_GLOBAL.AsByteArray());
+            BigInteger total = Storage.Get(Storage.CurrentContext, bondKey).AsBigInteger();
+            Storage.Put(Storage.CurrentContext, bondKey, total - mount);
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             //记录交易详细数据
@@ -1216,8 +1224,8 @@ namespace SARContract
             detail.txid = txid;
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_BOND_WITHDRAW;
             detail.operated = mount;
-            detail.hasLocked = locked - mount;
-            detail.hasDrawed = hasDrawed;
+            detail.hasLocked = sarInfo.locked;
+            detail.hasDrawed = sarInfo.hasDrawed;
             Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
 
             //触发操作事件
@@ -1443,7 +1451,6 @@ namespace SARContract
             if (allSd < hasDrawed + drawMount)
                 throw new InvalidOperationException("The sar can draw larger than max.");
 
-
             //get totalSupply
             BigInteger totalSupply = 0;
             {
@@ -1508,7 +1515,6 @@ namespace SARContract
             detail.operated = drawMount;
             detail.hasLocked = locked;
             detail.hasDrawed = hasDrawed;
-            
             Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
 
             //notify
@@ -1534,9 +1540,18 @@ namespace SARContract
 
             BigInteger locked = sarInfo.locked;
             BigInteger hasDrawed = sarInfo.hasDrawed;
+            BigInteger fee = sarInfo.fee;
+            BigInteger sdsFee = sarInfo.sdsFee;
+            BigInteger bondDrawed = sarInfo.bondDrawed;
             string assetType = sarInfo.assetType;
 
             if (hasDrawed > 0) throw new InvalidOperationException("The expand count must be 0.");
+
+            if(fee > 0) throw new InvalidOperationException("The param is exception.");
+
+            if(sdsFee > 0) throw new InvalidOperationException("The param is exception.");
+
+            if(bondDrawed > 0) throw new InvalidOperationException("The param is exception.");
 
             //delete sar
             Storage.Delete(Storage.CurrentContext, key);
