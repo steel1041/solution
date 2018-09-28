@@ -203,7 +203,7 @@ namespace SARContract
                 //创建SAR记录
                 if (operation == "createSAR4C")
                 {
-                    if (args.Length != 12) return false;
+                    if (args.Length != 11) return false;
                     byte[] addr = (byte[])args[0];
                     byte[] txid = (byte[])args[1];
                     BigInteger locked = (BigInteger)args[2];
@@ -215,7 +215,6 @@ namespace SARContract
                     uint lastHeight = (uint)args[8];
                     BigInteger fee = (BigInteger)args[9];
                     BigInteger sdsFee = (BigInteger)args[10];
-                    BigInteger rescue = (BigInteger)args[11];
 
                     if (!Runtime.CheckWitness(addr)) return false;
 
@@ -232,9 +231,9 @@ namespace SARContract
                     sar.fee = fee;
                     sar.sdsFee = sdsFee;
 
-                    if (rescue > 0) {
-                        Storage.Put(Storage.CurrentContext,getRescueKey(assetType.AsByteArray(),addr),rescue);
-                    }
+                    //存的老合约地址
+                    byte[] account = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+                    if (account.AsBigInteger() != callscript.AsBigInteger()) return false;
                     return createSAR4C(addr, sar);
                 }
                 //转移SAR合约中NEP5资产
@@ -246,7 +245,16 @@ namespace SARContract
                     if (!Runtime.CheckWitness(addr)) return false;
                     return migrateSAR4C(addr);
                 }
+                //强制迁移
+                if (operation == "forceMigrate")
+                {
+                    if (args.Length != 2) return false;
+                    byte[] otherAddr = (byte[])args[0];
+                    byte[] addr = (byte[])args[1];
 
+                    if (!Runtime.CheckWitness(addr)) return false;
+                    return forceMigrate(otherAddr, addr);
+                }
                 //查询债仓记录
                 if (operation == "getSAR4C")
                 {
@@ -519,8 +527,8 @@ namespace SARContract
                 throw new InvalidOperationException("The parameter addr SHOULD be 20-byte addresses.");
 
             //check SAR 
-            //if (checkState(SAR_STATE))
-                //throw new InvalidOperationException("The sar state MUST be pause.");
+            if (checkState(SAR_STATE))
+                throw new InvalidOperationException("The sar state MUST be pause.");
 
             //check SAR
             var key = getSARKey(addr);
@@ -553,11 +561,10 @@ namespace SARContract
                 var nep5Contract = (NEP5Contract)nep5AssetID.ToDelegate();
                 if (!(bool)nep5Contract("transfer", arg)) return false;
             }
-            //清算账户余额
-            BigInteger rescue = getRescue(sarInfo.assetType,addr);
+
             {
                 var newContract = (NEP5Contract)newSARID.ToDelegate();
-                object[] args = new object[12];
+                object[] args = new object[11];
                 args[0] = addr;
                 args[1] = sarInfo.txid;
                 args[2] = sarInfo.locked;
@@ -569,8 +576,95 @@ namespace SARContract
                 args[8] = sarInfo.lastHeight;
                 args[9]=  sarInfo.fee;
                 args[10]= sarInfo.sdsFee;
-                args[11] = rescue;
+
                 if (!(bool)newContract("createSAR4C", args))return false;
+            }
+            Storage.Delete(Storage.CurrentContext, key);
+            return true;
+        }
+
+        private static bool forceMigrate(byte[] otherAddr, byte[] addr)
+        {
+            if (addr.Length != 20)
+                throw new InvalidOperationException("The parameter addr SHOULD be 20-byte addresses.");
+
+            if (otherAddr.Length != 20)
+                throw new InvalidOperationException("The parameter otherAddr SHOULD be 20-byte addresses.");
+
+            //check SAR 
+            if (checkState(SAR_STATE))
+                throw new InvalidOperationException("The sar state MUST be pause.");
+
+            //check SAR
+            var key = getSARKey(addr);
+            byte[] bytes = getSAR4C(addr);
+            if (bytes.Length == 0) throw new InvalidOperationException("The sar can not be null.");
+
+            SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
+
+            BigInteger locked = sarInfo.locked;
+            BigInteger hasDrawed = sarInfo.hasDrawed;
+            BigInteger sdsFee = sarInfo.sdsFee;
+            string assetType = sarInfo.assetType;
+
+            if (sdsFee > 0) throw new InvalidOperationException("The sdsFee must not be 0.");
+
+            byte[] nep5AssetID = Storage.Get(Storage.CurrentContext, getAccountKey(assetType.AsByteArray()));
+            byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
+            byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
+            byte[] newSARID = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT_NEW.AsByteArray()));
+            if (newSARID.Length == 0) throw new InvalidOperationException("The param is exception.");
+
+            byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+            if (from.Length == 0) throw new InvalidOperationException("The param is exception.");
+
+            //当前NEP5美元价格，需要从价格中心获取
+            BigInteger nep5Price = 0;
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = assetType;
+                nep5Price = (BigInteger)OracleContract("getTypeB", arg);
+            }
+
+            //当前兑换率
+            BigInteger rate = 0;
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = assetType;
+                Config config = (Config)OracleContract("getStructConfig", arg);
+                rate = config.liquidate_line_rate_c;
+            }
+            //计算是否需要清算 乘以10000的值 如1.5 => 15000
+            BigInteger currentRate = locked * nep5Price / (hasDrawed * 10000);
+            if (currentRate >= rate * 100)
+                throw new InvalidOperationException("The param is exception.");
+
+            {
+                object[] arg = new object[3];
+                arg[0] = from;
+                arg[1] = newSARID;
+                arg[2] = locked;
+                var nep5Contract = (NEP5Contract)nep5AssetID.ToDelegate();
+                if (!(bool)nep5Contract("transfer", arg)) return false;
+            }
+        
+            {
+                var newContract = (NEP5Contract)newSARID.ToDelegate();
+                object[] args = new object[11];
+                args[0] = addr;
+                args[1] = sarInfo.txid;
+                args[2] = sarInfo.locked;
+                args[3] = sarInfo.hasDrawed;
+                args[4] = sarInfo.assetType;
+                args[5] = sarInfo.status;
+                args[6] = sarInfo.bondLocked;
+                args[7] = sarInfo.bondDrawed;
+                args[8] = sarInfo.lastHeight;
+                args[9] = sarInfo.fee;
+                args[10] = sarInfo.sdsFee;
+                if (!(bool)newContract("createSAR4C", args)) return false;
             }
             Storage.Delete(Storage.CurrentContext, key);
             return true;
@@ -1033,7 +1127,7 @@ namespace SARContract
 
             //有债仓,根据全量计算
             uint lastHeight = sarInfo.lastHeight;
-            BigInteger currFee = (blockHeight - lastHeight) * hasDrawed * fee_rate / sdsPrice;
+            BigInteger currFee = (blockHeight - lastHeight) * hasDrawed * fee_rate / (sdsPrice * EIGHT_POWER);
 
             //需要收取的手续费
             BigInteger needFee = mount * currFee/ hasDrawed;
@@ -1499,7 +1593,7 @@ namespace SARContract
             }else {
                 //有债仓,根据全量计算
                 uint lastHeight = sarInfo.lastHeight;
-                BigInteger currFee = (blockHeight - lastHeight) * hasDrawed * fee_rate / sdsPrice;
+                BigInteger currFee = (blockHeight - lastHeight) * hasDrawed * fee_rate / (sdsPrice * EIGHT_POWER);
 
                 sarInfo.lastHeight = blockHeight;
                 sarInfo.fee = currFee + fee;
