@@ -80,6 +80,8 @@ namespace SARContract
 
         private const ulong TEN_POWER = 10000000000;
 
+        private const ulong EIGHT_POWER = 100000000;
+
         private static byte[] getSARKey(byte[] addr) => new byte[] { 0x12 }.Concat(addr);
 
         private static byte[] getTxidKey(byte[] txid) => new byte[] { 0x14 }.Concat(txid);
@@ -913,10 +915,10 @@ namespace SARContract
             }
 
             //计算可以拿到的SNEO资产
-            BigInteger canClearNeo = bondMount * TEN_POWER / nep5Price;
+            BigInteger canClearNeo = bondMount * EIGHT_POWER / nep5Price;
 
             //清算部分后的抵押率 如：160
-            BigInteger lastRate = (lockedNeo - canClearNeo) * nep5Price / ((hasDrawed-bondDrawed) * SIX_POWER);
+            BigInteger lastRate = (lockedNeo - canClearNeo) * nep5Price / ((hasDrawed-bondDrawed) * EIGHT_POWER);
 
             if (lastRate > rescueRate)
                 throw new InvalidOperationException("The param is exception.");
@@ -930,7 +932,7 @@ namespace SARContract
             {
                 sarInfo.locked = lockedNeo - canClearNeo;
             }
-            sarInfo.hasDrawed = hasDrawed - bondDrawed;
+            sarInfo.hasDrawed = hasDrawed - bondMount;
             sarInfo.bondLocked = bondLocked + canClearNeo;
             sarInfo.bondDrawed = bondDrawed + bondMount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
