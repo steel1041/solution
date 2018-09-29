@@ -12,7 +12,7 @@ SAR Contract Address:
 
  方法  | 参数 | 返回值 | 描述 |
 --- | --- | --- | ---
-openSAR4C | byte[]=>addr、string=>assetType |bool|由地址和抵押资产类型来创建SAR，目前资产类型：cneo_price  ==一个地址只能创建一个SAR==
+openSAR4C | byte[]=>addr、string=>assetType |bool|由地址和抵押资产类型来创建SAR，目前资产类型：cneo_price  '一个地址只能创建一个SAR'
 getSAR4C | byte[]=>addr|[SARInfo](#/)|根据地址获取当前SAR信息
 reserve | byte[]=>addr、int=>mount|bool|抵押相应数额的资产到SAR，如CNEO资产，mount是CNEO金额
 recharge | byte[]=>addr、int=>mount|bool|充值SDS手续费进入到SAR，mount是SDS金额
@@ -20,13 +20,50 @@ expande | byte[]=>addr、int=>mount|bool|发行稳定币SDUSD，mount是SDUSD金
 withdraw | byte[]=>addr、int=>mount|bool|提取未发行稳定币的抵押物CNEO，mount是CNEO金额
 contract | byte[]=>addr、int=>mount|bool|回收已发行的稳定币SDUSD，mount是SDUSD金额
 withdrawT | byte[]=>addr、int=>mount|bool|Bond机制下回收已发行的Bond，mount是Bond金额
-rescue | byte[]=>otherAddr、byte[]=>addr、int=>mount|bool|清算其它SAR，mount是SDUSD金额 ==SAR抵押率低于150%时候可以进行清算，清算可拿到优惠的CNEO==
+rescue | byte[]=>otherAddr、byte[]=>addr、int=>mount|bool|清算其它SAR，mount是SDUSD金额 'SAR抵押率低于150%时候可以进行清算，清算可拿到优惠的CNEO'
 rescueT | byte[]=>otherAddr、byte[]=>addr、int=>mount|bool|Bond机制下清算其它SAR回收已发行的稳定币，mount是Bond金额
 close | byte[]=>addr|bool|关闭SAR
 claimFee | byte[]=>addr|bool|赎回充值的手续费SDS
-migrateSAR4C | byte[]=>addr|bool|迁移SAR至新合约 ==包括合约中CNEO转移==
-forceMigrate | byte[]=>otherAddr、byte[]=>addr|bool|强制迁移SAR至新合约 ==包括合约中CNEO转移 抵押率低于150%才可以触发==
+migrateSAR4C | byte[]=>addr|bool|迁移SAR至新合约 '包括合约中CNEO转移'
+forceMigrate | byte[]=>otherAddr、byte[]=>addr|bool|强制迁移SAR至新合约 '包括合约中CNEO转移 抵押率低于150%才可以触发'
 setAccount | string=>key、byte[]=>addr | bool | 设置合约中参数
 setBondAccount | byte[]=>addr | bool | 设置Bond中参数
 removeBondAccount | byte[]=>addr | bool | 删除Bond中参数
 setConfig| string=>key、byte[]=>addr | bool | 增加SAR配置参数
+
+## SARInfo
+
+            //创建者
+            public byte[] owner;
+
+            //交易序号
+            public byte[] txid;
+
+            //抵押资产,如CNEO
+            public BigInteger locked;
+
+            //已发行资产，如SDUSDT  
+            public BigInteger hasDrawed;
+
+            //neo:cneo_price   gas:cgas_price 
+            public string assetType;
+
+            //1安全  2不安全 3不可用   
+            public int status;
+
+            //Bond锁定的资产
+            public BigInteger bondLocked;
+
+            //Bond锁定的SDUSD
+            public BigInteger bondDrawed;
+
+            //最新expande操作的区块高度
+            public uint lastHeight;
+
+            //手续费总量 sds
+            public BigInteger fee;
+
+            //充值的SDS手续费
+            public BigInteger sdsFee;
+           
+
