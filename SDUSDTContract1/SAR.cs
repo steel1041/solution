@@ -82,6 +82,8 @@ namespace SARContract
 
         private const ulong EIGHT_POWER = 100000000;
 
+        private const ulong SIXTEEN_POWER = 10000000000000000;
+
         private static byte[] getSARKey(byte[] addr) => new byte[] { 0x12 }.Concat(addr);
 
         private static byte[] getTxidKey(byte[] txid) => new byte[] { 0x14 }.Concat(txid);
@@ -1123,17 +1125,18 @@ namespace SARContract
             //cal fee
             uint blockHeight = Blockchain.GetHeight();
             BigInteger fee = sarInfo.fee;
-            BigInteger sdsFree = sarInfo.sdsFee;
+            BigInteger sdsFee = sarInfo.sdsFee;
 
             //有债仓,根据全量计算
             uint lastHeight = sarInfo.lastHeight;
-            BigInteger currFee = (blockHeight - lastHeight) * hasDrawed * fee_rate / (sdsPrice * EIGHT_POWER);
+            BigInteger currFee = (blockHeight - lastHeight) * hasDrawed * fee_rate / SIXTEEN_POWER;
 
-            //需要收取的手续费
-            BigInteger needFee = mount * currFee/ hasDrawed;
+            //需要收取的手续费转化为SDS数量
+            BigInteger needUSDFee = (currFee + fee) * mount / hasDrawed;
+            BigInteger needFee = needUSDFee * EIGHT_POWER / sdsPrice;
 
             //手续费不够扣
-            if (needFee > sdsFree)
+            if (needFee > sdsFee)
                 throw new InvalidOperationException("The param is exception.");
 
             //减少金额
@@ -1146,8 +1149,8 @@ namespace SARContract
             }
 
             sarInfo.lastHeight = blockHeight;
-            sarInfo.fee = currFee - needFee;
-            sarInfo.sdsFee = sdsFree - needFee;
+            sarInfo.fee = currFee + fee - needUSDFee;
+            sarInfo.sdsFee = sdsFee - needFee;
             sarInfo.hasDrawed = hasDrawed - mount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
 
@@ -1572,13 +1575,13 @@ namespace SARContract
             }
 
             //get asset price
-            BigInteger sdsPrice = 0;
-            {
-                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-                object[] arg = new object[1];
-                arg[0] = CONFIG_PRICE_SDS;
-                sdsPrice = (BigInteger)OracleContract("getTypeB", arg);
-            }
+            //BigInteger sdsPrice = 0;
+            //{
+            //    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+            //    object[] arg = new object[1];
+            //    arg[0] = CONFIG_PRICE_SDS;
+            //    sdsPrice = (BigInteger)OracleContract("getTypeB", arg);
+            //}
 
             //cal fee
             uint blockHeight = Blockchain.GetHeight();
@@ -1593,7 +1596,8 @@ namespace SARContract
             }else {
                 //有债仓,根据全量计算
                 uint lastHeight = sarInfo.lastHeight;
-                BigInteger currFee = (blockHeight - lastHeight) * hasDrawed * fee_rate / (sdsPrice * EIGHT_POWER);
+                //记录SDUSD总量
+                BigInteger currFee = (blockHeight - lastHeight) * hasDrawed * fee_rate / SIXTEEN_POWER;
 
                 sarInfo.lastHeight = blockHeight;
                 sarInfo.fee = currFee + fee;
@@ -1679,13 +1683,13 @@ namespace SARContract
             //交易序号
             public byte[] txid;
 
-            //被锁定的资产,如SNEO
+            //已抵押资产,如CNEO
             public BigInteger locked;
 
-            //已经提取的资产，如SDUSDT  
+            //已发行的资产，如SDUSDT  
             public BigInteger hasDrawed;
 
-            //neo:neo_price   gas:gas_price 
+            //neo:cneo_price   gas:cgas_price 
             public string assetType;
 
             //1安全  2不安全 3不可用   
