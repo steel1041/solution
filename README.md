@@ -23,7 +23,8 @@ withdrawT | byte[]=>addr、int=>mount|bool|Bond机制下回收已发行的Bond�
 rescue | byte[]=>otherAddr、byte[]=>addr、int=>mount|bool|清算其它SAR，mount是SDUSD金额 'SAR抵押率低于150%时候可以进行清算，清算可拿到优惠的CNEO'
 rescueT | byte[]=>otherAddr、byte[]=>addr、int=>mount|bool|Bond机制下清算其它SAR回收已发行的稳定币，mount是Bond金额
 close | byte[]=>addr|bool|关闭SAR
-claimFee | byte[]=>addr|bool|赎回充值的手续费SDS
+claimFee | byte[]=>addr、int=>mount|bool|赎回充值的手续费SDS
+claimAllFee | byte[]=>addr|bool|赎回所有充值的手续费SDS
 migrateSAR4C | byte[]=>addr|bool|迁移SAR至新合约 '包括合约中CNEO转移'
 forceMigrate | byte[]=>otherAddr、byte[]=>addr|bool|强制迁移SAR至新合约 '包括合约中CNEO转移 抵押率低于150%才可以触发'
 setAccount | string=>key、byte[]=>addr | bool | 设置合约中参数
