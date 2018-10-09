@@ -547,7 +547,7 @@ namespace SARContract
             }
 
             BigInteger needFee = fee * EIGHT_POWER/ sdsPrice;
-            if((sdsFee-mount) < needFee) throw new InvalidOperationException("The operation is exception.");
+            if((sdsFee - mount) < needFee) throw new InvalidOperationException("The operation is exception.");
 
             if (sdsFee > 0)
             {
@@ -558,7 +558,7 @@ namespace SARContract
                 object[] arg = new object[3];
                 arg[0] = from;
                 arg[1] = addr;
-                arg[2] = sdsFee;
+                arg[2] = mount;
                 var nep5Contract = (NEP5Contract)sdsAsset.ToDelegate();
                 if (!(bool)nep5Contract("transfer_contract", arg))
                     throw new InvalidOperationException("The transfer is exception.");
@@ -892,27 +892,34 @@ namespace SARContract
             }
             //计算是否需要清算 乘以10000的值 如1.5 => 15000
             BigInteger currentRate = lockedNeo * nep5Price / (hasDrawed * 10000);
-            if (currentRate > rate * 100)
+            //当前抵押率不能大于150%
+            if (currentRate >= rate * 100)
                 throw new InvalidOperationException("The param is exception.");
 
-            //计算可以拿到的SNEO资产
-            BigInteger canClearNeo = mount* TEN_POWER / (nep5Price * rateClear);
+            BigInteger canClearNeo = 0;
+            //当前抵押率在100-150之间
+            if (currentRate > 10000 && currentRate < rate * 100)
+            {
+                //计算可以拿到的SNEO资产
+                canClearNeo = mount * TEN_POWER / (nep5Price * rateClear);
 
-            if (canClearNeo <= 0)
-                throw new InvalidOperationException("The param is exception.");
+                if (canClearNeo <= 0)
+                    throw new InvalidOperationException("The param is exception.");
 
-            if (canClearNeo > lockedNeo)
-                canClearNeo = lockedNeo;
+                if (canClearNeo > lockedNeo)
+                    canClearNeo = lockedNeo;
 
-            //清算部分后的抵押率 如：160
-            BigInteger lastRate = (lockedNeo - canClearNeo) * nep5Price / ((hasDrawed - mount) * SIX_POWER);     
+                //清算部分后的抵押率 如：160
+                BigInteger lastRate = (lockedNeo - canClearNeo) * nep5Price / ((hasDrawed - mount) * SIX_POWER);
 
-            if (lastRate > rescueRate)
-                throw new InvalidOperationException("The param is exception.");
+                if (lastRate > rescueRate)
+                    throw new InvalidOperationException("The param is exception.");
+            }
 
-            if (lastRate <= 100) {
+            if (currentRate <= 10000) {
                 if(mount != hasDrawed)
                     throw new InvalidOperationException("The param is exception.");
+                canClearNeo = lockedNeo;
             }
             //销毁等量SDUSD
             {
@@ -1011,10 +1018,10 @@ namespace SARContract
 
             //计算是否需要清算 乘以10000的值 如1.5 => 15000
             BigInteger currentRate = lockedNeo * nep5Price / (hasDrawed * 10000);
-            if (currentRate > rate * 100)
+            if (currentRate >= rate * 100)
                 throw new InvalidOperationException("The param is exception.");
 
-            if (currentRate <= 100) {
+            if (currentRate <= 10000) {
                 if(bondMount != hasDrawed)
                     throw new InvalidOperationException("The param is exception.");
             }
@@ -1022,11 +1029,14 @@ namespace SARContract
             //计算可以拿到的SNEO资产
             BigInteger canClearNeo = bondMount * EIGHT_POWER / nep5Price;
 
-            //清算部分后的抵押率 如：160
-            BigInteger lastRate = (lockedNeo - canClearNeo) * nep5Price / ((hasDrawed-bondDrawed) * EIGHT_POWER);
+            if (currentRate > 10000 && currentRate < rate * 100)
+            {
+                //清算部分后的抵押率 如：160
+                BigInteger lastRate = (lockedNeo - canClearNeo) * nep5Price / ((hasDrawed - bondDrawed) * EIGHT_POWER);
 
-            if (lastRate > rescueRate)
-                throw new InvalidOperationException("The param is exception.");
+                if (lastRate > rescueRate)
+                    throw new InvalidOperationException("The param is exception.");
+            }
 
             //真正开始Bond操作
             if (canClearNeo > lockedNeo)
@@ -1048,16 +1058,6 @@ namespace SARContract
             Storage.Put(Storage.CurrentContext,bondKey,total + bondMount);
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            //记录交易详细数据
-            SARTransferDetail detail = new SARTransferDetail();
-            detail.from = addr;
-            detail.sarTxid = sarInfo.txid;
-            detail.txid = txid;
-            detail.type = (int)ConfigTranType.TRANSACTION_TYPE_BOND_RESUCE;
-            detail.operated = bondMount;
-            detail.hasLocked = sarInfo.locked;
-            detail.hasDrawed = sarInfo.hasDrawed;
-            Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
             //触发操作事件
             Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_BOND_RESUCE, bondMount);
             return true;
