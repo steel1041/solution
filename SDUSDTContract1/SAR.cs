@@ -563,12 +563,12 @@ namespace SARContract
                 if (!(bool)nep5Contract("transfer_contract", arg))
                     throw new InvalidOperationException("The transfer is exception.");
             }
-            sarInfo.sdsFee = 0;
+            sarInfo.sdsFee = sdsFee - mount;
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
             //notify
-            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_CLAIMFEE, sdsFee);
+            Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_CLAIMFEE, mount);
             return true;
         }
 
@@ -1039,9 +1039,10 @@ namespace SARContract
             }
 
             //真正开始Bond操作
-            if (canClearNeo > lockedNeo)
+            if (canClearNeo >= lockedNeo)
             {
                 sarInfo.locked = 0;
+                canClearNeo = lockedNeo;
             }
             else
             {
