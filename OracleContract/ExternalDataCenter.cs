@@ -31,43 +31,6 @@ namespace OracleCOntract2
 
             var magicstr = "2018-09-26 14:16";
 
-            //管理员添加TypeA的合法参数
-            if (operation == "addTypeAParaWhit")
-            {
-                if (args.Length != 2) return false;
-
-                if (!Runtime.CheckWitness(admin)) return false;
-
-                byte[] account = (byte[])args[0];
-
-                if (account.Length != 20) return false;
-
-                //设置授权状态,state = 0未授权,state != 0 授权
-                BigInteger state = (BigInteger)args[1];
-
-                byte[] byteKey = GetTypeAParaKey(account);
-
-                Storage.Put(Storage.CurrentContext, byteKey, state);
-
-                return true;
-            }
-
-            //管理员移除TypeA的合法参数
-            if (operation == "removeTypeAParaWhit")
-            {
-                if (args.Length != 1) return false;
-
-                byte[] addr = (byte[])args[0];
-
-                if (!Runtime.CheckWitness(admin)) return false;
-
-                byte[] byteKey = GetTypeAParaKey(addr);
-
-                Storage.Delete(Storage.CurrentContext, byteKey);
-
-                return true;
-            }
-
             /*设置全局参数
             * liquidate_rate_b 150
             * warning_rate_c 120
@@ -354,7 +317,6 @@ namespace OracleCOntract2
             for (int i = 0; i < prices.Length; i++)
             {
                 BigInteger keyIndex = i + 1;
-
                 byte[] byteKey = GetTypeBKey(key, keyIndex);
                 BigInteger val = Storage.Get(Storage.CurrentContext, byteKey).AsBigInteger();
 
@@ -373,7 +335,7 @@ namespace OracleCOntract2
             BigInteger value = sum / prices.Length;
 
             Storage.Put(Storage.CurrentContext, GetAverageKey(key), value);
-
+             
             return value;
         }
 
