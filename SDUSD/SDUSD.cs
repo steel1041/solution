@@ -33,6 +33,9 @@ namespace SDUSD
         //合约收款账户
         private const string STORAGE_ACCOUNT = "storage_account";
 
+        //admin账户
+        private const string ADMIN_ACCOUNT = "admin_account";
+
         private static byte[] getAccountKey(byte[] account) => new byte[] { 0x15 }.Concat(account);
 
         private static byte[] getBalanceKey(byte[] addr) => new byte[] { 0x11 }.Concat(addr);
@@ -40,6 +43,8 @@ namespace SDUSD
         private static byte[] getTxidKey(byte[] txid) => new byte[] { 0x13 }.Concat(txid);
 
         private static byte[] getTotalKey(byte[] total) => new byte[] { 0x12 }.Concat(total);
+
+        private static byte[] getAdminKey(byte[] key) => new byte[] { 0x16 }.Concat(key);
 
         /// <summary>
         ///   This smart contract is designed to implement NEP-5
@@ -100,18 +105,28 @@ namespace SDUSD
                 }
                 if (operation == "setAccount")
                 {
-                    if (args.Length != 1) return false;
-                    byte[] address = (byte[])args[0];
+                    if (args.Length != 2) return false;
+                    //操作地址，验证当前管理员账户
+                    string key = (string)args[0];
+                    byte[] address = (byte[])args[1];
 
-                    if (!Runtime.CheckWitness(admin)) return false;
-                    return setAccount(address);
+                    if (!checkAdmin()) return false;
+                    return setAccount(key, address);
                 }
-                if (operation == "getAccount")
+                if (operation == "setCallAccount")
                 {
                     if (args.Length != 1) return false;
                     byte[] address = (byte[])args[0];
 
-                    return getAccount(address);
+                    if (!checkAdmin()) return false;
+                    return setCallAccount(address);
+                }
+                if (operation == "getCallAccount")
+                {
+                    if (args.Length != 1) return false;
+                    byte[] address = (byte[])args[0];
+
+                    return getCallAccount(address);
                 }
                 //增发代币
                 if (operation == "increase")
@@ -120,10 +135,8 @@ namespace SDUSD
                     byte[] addr = (byte[])args[0];
                     BigInteger value = (BigInteger)args[1];
 
-                    //if (!Runtime.CheckWitness(addr)) return false;
-
                     //判断调用者是否是授权合约
-                    if (getAccount(callscript) != 1) return false;
+                    if (getCallAccount(callscript) != 1) return false;
                     return increase(addr, value);
                 }
                 //销毁代币
@@ -133,18 +146,15 @@ namespace SDUSD
                     byte[] addr = (byte[])args[0];
                     BigInteger value = (BigInteger)args[1];
 
-                    //if (!Runtime.CheckWitness(addr)) return false;
-
                     //判断调用者是否是授权合约
-                    if (getAccount(callscript) != 1) return false;
+                    if (getCallAccount(callscript) != 1) return false;
                     return destory(addr,value);
                 }
                 #region 升级合约,耗费490,仅限管理员
                 if (operation == "upgrade")
                 {
                     //不是管理员 不能操作
-                    if (!Runtime.CheckWitness(admin))
-                        return false;
+                    if (!checkAdmin()) return false;
 
                     if (args.Length != 1 && args.Length != 9)
                         return false;
@@ -182,6 +192,30 @@ namespace SDUSD
 
             }
             return false;
+        }
+
+        public static bool setAccount(string key, byte[] address)
+        {
+            if (address.Length != 20)
+                throw new InvalidOperationException("The parameters address and to SHOULD be 20-byte addresses.");
+
+            Storage.Put(Storage.CurrentContext, getAdminKey(key.AsByteArray()), address);
+            return true;
+        }
+
+        private static bool checkAdmin()
+        {
+            byte[] currAdmin = Storage.Get(Storage.CurrentContext, getAdminKey(ADMIN_ACCOUNT.AsByteArray()));
+            if (currAdmin.Length > 0)
+            {
+                //当前地址和配置地址必须一致
+                if (!Runtime.CheckWitness(currAdmin)) return false;
+            }
+            else
+            {
+                if (!Runtime.CheckWitness(admin)) return false;
+            }
+            return true;
         }
 
         //nep5 func
@@ -232,15 +266,17 @@ namespace SDUSD
             return false;
         }
 
-        public static bool setAccount(byte[] address)
+        public static bool setCallAccount(byte[] address)
         {
-            if (address.Length != 20) return false;
+            if (address.Length != 20)
+                throw new InvalidOperationException("The parameter addr SHOULD be 20-byte addresses.");
+            
             //1:whitelist
             Storage.Put(Storage.CurrentContext, getAccountKey(address), 1);
             return true;
         }
 
-        public static BigInteger getAccount(byte[] address) {
+        public static BigInteger getCallAccount(byte[] address) {
             if (address.Length != 20) return 0;
 
             return Storage.Get(Storage.CurrentContext, getAccountKey(address)).AsBigInteger();

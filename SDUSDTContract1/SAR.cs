@@ -70,7 +70,10 @@ namespace SARContract
         private const string SASSET_ACCOUNT = "sasset_account";
 
         //SDUSD合约账户
-        private const string SDUSD_ACCOUNT = "sdusd_account";
+        private const string SDUSD_ACCOUNT = "sdusd_account";       
+        
+        //admin账户
+        private const string ADMIN_ACCOUNT = "admin_account";
 
         private const string SAR_STATE = "sar_state";
 
@@ -143,22 +146,6 @@ namespace SARContract
                 //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了
                 var callscript = ExecutionEngine.CallingScriptHash;
                
-                //设置全局参数
-                if (operation == "setConfig")
-                {
-                    if (args.Length != 2) return false;
-                    string key = (string)args[0];
-                    BigInteger value = (BigInteger)args[1];
-                    return setConfig(key, value);
-                }
-                //查询全局参数
-                if (operation == "getConfig")
-                {
-                    if (args.Length != 1) return false;
-                    string key = (string)args[0];
-
-                    return getConfig(key);
-                }
                 //创建SAR记录
                 if (operation == "openSAR4C")
                 {
@@ -185,7 +172,7 @@ namespace SARContract
                     BigInteger fee = (BigInteger)args[9];
                     BigInteger sdsFee = (BigInteger)args[10];
 
-                    if (!Runtime.CheckWitness(admin)) return false;
+                    if (!checkAdmin()) return false;
 
                     SARInfo sar = new SARInfo();
                     sar.assetType = assetType;
@@ -400,10 +387,11 @@ namespace SARContract
                 if (operation == "setAccount")
                 {
                     if (args.Length != 2) return false;
+                    //操作地址，验证当前管理员账户
                     string key = (string)args[0];
                     byte[] address = (byte[])args[1];
-                    if (!Runtime.CheckWitness(admin)) return false;
 
+                    if (!checkAdmin()) return false;
                     return setAccount(key, address);
                 }
 
@@ -412,7 +400,7 @@ namespace SARContract
                     if (args.Length != 1) return false;
                     byte[] address = (byte[])args[0];
 
-                    if (!Runtime.CheckWitness(admin)) return false;
+                    if (!checkAdmin()) return false;
                     return setBondAccount(address);
                 }
 
@@ -421,15 +409,32 @@ namespace SARContract
                     if (args.Length != 1) return false;
                     byte[] address = (byte[])args[0];
 
-                    if (!Runtime.CheckWitness(admin)) return false;
+                    if (!checkAdmin()) return false;
                     return removeBondAccount(address);
+                }
+                //设置全局参数
+                if (operation == "setConfig")
+                {
+                    if (args.Length != 2) return false;
+                    string key = (string)args[0];
+                    BigInteger value = (BigInteger)args[1];
+
+                    if (!checkAdmin()) return false;
+                    return setConfig(key, value);
+                }
+                //查询全局参数
+                if (operation == "getConfig")
+                {
+                    if (args.Length != 1) return false;
+                    string key = (string)args[0];
+
+                    return getConfig(key);
                 }
                 #region 升级合约,耗费990,仅限管理员
                 if (operation == "upgrade")
                 {
                     //不是管理员 不能操作
-                    if (!Runtime.CheckWitness(admin))
-                        return false;
+                    if (!checkAdmin()) return false;
 
                     if (args.Length != 1 && args.Length != 9)
                         return false;
@@ -469,6 +474,20 @@ namespace SARContract
             return false;
         }
 
+        private static bool checkAdmin() {
+            byte[] currAdmin = Storage.Get(Storage.CurrentContext, getAccountKey(ADMIN_ACCOUNT.AsByteArray()));            
+            if (currAdmin.Length > 0)
+            {
+                //当前地址和配置地址必须一致
+                if (!Runtime.CheckWitness(currAdmin)) return false;
+            }
+            else
+            {
+                if (!Runtime.CheckWitness(admin)) return false;
+            }
+            return true;
+        }
+
         private static BigInteger getBondGlobal()
         {
             byte[] bondKey = getBondGlobalKey(BOND_ISSUED_GLOBAL.AsByteArray());
@@ -480,10 +499,6 @@ namespace SARContract
         {
             if (addr.Length != 20)
                 throw new InvalidOperationException("The parameters to and to SHOULD be 20-byte addresses.");
-
-            //check state
-            //if (!checkState(SAR_STATE))
-            //    throw new InvalidOperationException("The sar state MUST not be pause.");
 
             var key = getSARKey(addr);
             byte[] bytes = getSAR4C(addr);
@@ -523,8 +538,8 @@ namespace SARContract
                 throw new InvalidOperationException("The parameter mount MUST be greater than 0.");
             
             //check state
-            if (!checkState(SAR_STATE))
-                throw new InvalidOperationException("The sar state MUST not be pause.");
+            //if (!checkState(SAR_STATE))
+            //    throw new InvalidOperationException("The sar state MUST not be pause.");
 
             var key = getSARKey(addr);
             byte[] bytes = getSAR4C(addr);
@@ -546,8 +561,8 @@ namespace SARContract
                 sdsPrice = (BigInteger)OracleContract("getTypeB", arg);
             }
 
-            BigInteger needFee = fee * EIGHT_POWER/ sdsPrice;
-            if((sdsFee - mount) < needFee) throw new InvalidOperationException("The operation is exception.");
+            //BigInteger needFee = fee * EIGHT_POWER/ sdsPrice;
+            //if((sdsFee - mount) < needFee) throw new InvalidOperationException("The operation is exception.");
 
             if (sdsFee > 0)
             {
@@ -1074,9 +1089,6 @@ namespace SARContract
 
         private static Boolean setConfig(string configKey, BigInteger value)
         {
-            //只允许超管操作
-            if (!Runtime.CheckWitness(admin)) return false;
-
             byte[] key = getConfigKey(configKey.AsByteArray());
             StorageMap config = Storage.CurrentContext.CreateMap(nameof(config));
             config.Put(key, value);
