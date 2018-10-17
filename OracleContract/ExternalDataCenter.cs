@@ -3,14 +3,16 @@ using Neo.SmartContract.Framework.Services.Neo;
 using Helper = Neo.SmartContract.Framework.Helper;
 using System;
 using System.Numerics;
-using Neo.SmartContract.Framework.Services.System; 
+using Neo.SmartContract.Framework.Services.System;
+using System.Collections.Generic;
 
 namespace OracleCOntract2
 {
     public class Contract1 : SmartContract
     {
-        //管理员账户 
-        private static readonly byte[] admin = Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa");
+        //管理员账户  
+        private static byte[] addr = Storage.Get(Storage.CurrentContext, "admin");
+        private static byte[] admin() => addr.Length != 20 ? Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa") : addr;
 
         private static byte[] GetTypeAParaKey(byte[] account) => new byte[] { 0x01 }.Concat(account);
         private static byte[] GetTypeAKey(string strKey) => new byte[] { 0x02 }.Concat(strKey.AsByteArray());
@@ -83,6 +85,28 @@ namespace OracleCOntract2
 
                 return removeParaAddrWhit(para, addr);
             }
+            
+            if (operation == "getApprovedAddrs")
+            {
+                if (args.Length != 1) return false;
+
+                string para = (string)args[0];
+
+                byte[] prefix = GetParaAddrKey(para, new byte[]{ });
+                  
+                return getDataWithPrefix(prefix);
+            }
+
+            if (operation == "getAddrWithPrice")
+            {
+                if (args.Length != 1) return false;
+
+                string para = (string)args[0];
+                 
+                byte[] prefix = GetAddrIndexKey(para, new byte[]{ });
+                 
+                return getDataWithPrefix(prefix); 
+            } 
 
             /* 设置代币价格  
             *  neo_price    50*100000000
@@ -133,7 +157,7 @@ namespace OracleCOntract2
 
             if (operation == "setStructConfig")
             {
-                if (!Runtime.CheckWitness(admin)) return false;
+                if (!Runtime.CheckWitness(admin())) return false;
                 return setStructConfig();
             }
 
@@ -141,7 +165,7 @@ namespace OracleCOntract2
             if (operation == "upgrade")
             {
                 //不是管理员 不能操作
-                if (!Runtime.CheckWitness(admin))
+                if (!Runtime.CheckWitness(admin()))
                     return false;
 
                 if (args.Length != 1 && args.Length != 9)
@@ -184,7 +208,7 @@ namespace OracleCOntract2
 
         public static bool addParaAddrWhit(string para, byte[] addr, BigInteger state)
         {
-            if (!Runtime.CheckWitness(admin)) return false;
+            if (!Runtime.CheckWitness(admin())) return false;
 
             if (addr.Length != 20) return false;
 
@@ -209,7 +233,7 @@ namespace OracleCOntract2
 
         public static bool removeParaAddrWhit(string para, byte[] addr)
         {
-            if (!Runtime.CheckWitness(admin)) return false;
+            if (!Runtime.CheckWitness(admin())) return false;
 
             byte[] paraAddrByteKey = GetParaAddrKey(para, addr);
 
@@ -222,11 +246,56 @@ namespace OracleCOntract2
             return true;
         }
 
+        public static Object getDataWithPrefix(byte[] prefix)
+        {
+            int count = 0;
+
+            Iterator<byte[], byte[]> iterator = Storage.Find(Storage.CurrentContext, prefix);
+
+            while (iterator.Next())
+            {
+                if (iterator.Key.Range(0,prefix.Length) == prefix)
+                {
+                    count++;
+                }
+            }
+             
+            var array = new Object[count];
+
+            if (count == 0) return array;
+             
+            int index = 0;
+            
+            Iterator<byte[], byte[]> iterator2 = Storage.Find(Storage.CurrentContext, prefix);
+              
+            while (iterator2.Next())
+            {
+                if (iterator2.Key.Range(0, prefix.Length) == prefix)
+                {
+                    NodeObj obj = new NodeObj();
+
+                    byte[] rawKey = iterator2.Key;
+
+                    byte[] addr = rawKey.Range(prefix.Length, rawKey.Length - prefix.Length);
+
+                    obj.addr = addr;
+                    obj.value = iterator2.Value.AsBigInteger();
+
+                    array[index] = obj;
+
+                    index++;
+                }
+            }
+            
+            return array;
+
+        }
+
         public static bool setTypeA(string key, BigInteger value)
         {
             if (key == null || key == "") return false;
 
-            if (!Runtime.CheckWitness(admin)) return false;
+            if (!Runtime.CheckWitness(admin())) return false;
 
             byte[] byteKey = GetTypeAKey(key);
 
@@ -270,7 +339,7 @@ namespace OracleCOntract2
         }
 
         public static Config getStructConfig()
-        {
+        { 
             byte[] value = Storage.Get(Storage.CurrentContext, GetConfigKey("structConfig".AsByteArray()));
             if (value.Length > 0)
                 return Helper.Deserialize(value) as Config;
@@ -420,6 +489,12 @@ namespace OracleCOntract2
         //C端最大发行量(债务上限)  1000000000000
         public BigInteger debt_top_c;
 
+        }
+
+        public class NodeObj
+        {
+            public byte[] addr;
+            public BigInteger value;
         }
     }
 }
