@@ -5,14 +5,27 @@ using System;
 using System.Numerics;
 using Neo.SmartContract.Framework.Services.System;
 using System.Collections.Generic;
+using System.ComponentModel;
 
 namespace OracleCOntract2
 {
     public class Contract1 : SmartContract
-    {
+    { 
+
+        //事件类型
+        private static readonly int EVENT_TYPE_SET_TYPEA = 1;
+        private static readonly int EVENT_TYPE_SET_TYPEB = 2;
+        private static readonly int EVENT_TYPE_SET_ACCOUNT = 3;
+        private static readonly int EVENT_TYPE_SET_ADDR = 4;
+        private static readonly int EVENT_TYPE_SET_MEDIAN = 5;
+         
         //管理员账户  
-        private static byte[] addr = Storage.Get(Storage.CurrentContext, "admin");
-        private static byte[] admin() => addr.Length != 20 ? Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa") : addr;
+        [DisplayName("oracleOperator")]
+        public static event Action<byte[], byte[], byte[], BigInteger, int> Operated;
+         
+        //admin账户
+        private const string ADMIN_ACCOUNT = "admin_account"; 
+        private static readonly byte[] admin = Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa");
 
         private static byte[] GetTypeAParaKey(byte[] account) => new byte[] { 0x01 }.Concat(account);
         private static byte[] GetTypeAKey(string strKey) => new byte[] { 0x02 }.Concat(strKey.AsByteArray());
@@ -26,6 +39,8 @@ namespace OracleCOntract2
         private static byte[] GetAverageKey(string key) => new byte[] { 0x21 }.Concat(key.AsByteArray());
 
         private static byte[] GetConfigKey(byte[] key) => new byte[] { 0x30 }.Concat(key);
+
+        private static byte[] GetAccountKey(string key) => new byte[] { 0x40 }.Concat(key.AsByteArray());
          
         public static Object Main(string operation, params object[] args)
         {
@@ -58,6 +73,26 @@ namespace OracleCOntract2
                 string key = (string)args[0];
 
                 return getTypeA(key);
+            }
+
+            if (operation == "setAccount")
+            {
+                if (args.Length != 2) return false;
+                //操作地址，验证当前管理员账户
+                string key = (string)args[0];
+                byte[] address = (byte[])args[1];
+
+                if (!checkAdmin()) return false;
+
+                return setAccount(key, address);
+            }
+
+            if (operation == "getAccount")
+            {
+                if (args.Length != 1) return false;
+                string key = (string)args[0];
+
+                return Storage.Get(Storage.CurrentContext, GetAccountKey(key));
             }
 
             //管理员添加某个参数合法外部喂价器地址
@@ -97,7 +132,7 @@ namespace OracleCOntract2
                 return getDataWithPrefix(prefix);
             }
 
-            if (operation == "getAddrWithPrice")
+            if (operation == "getAddrWithParas")
             {
                 if (args.Length != 1) return false;
 
@@ -106,7 +141,18 @@ namespace OracleCOntract2
                 byte[] prefix = GetAddrIndexKey(para, new byte[]{ });
                  
                 return getDataWithPrefix(prefix); 
-            } 
+            }
+
+            if (operation == "getAddrWithConfigs")
+            { 
+                if (args.Length != 1) return false;
+
+                byte[] addr = (byte[])args[0];
+
+                byte[] prefix = new byte[] { }.Concat(addr);
+
+                return getConfigsWithPrefix(prefix);
+            }
 
             /* 设置代币价格  
             *  neo_price    50*100000000
@@ -157,7 +203,7 @@ namespace OracleCOntract2
 
             if (operation == "setStructConfig")
             {
-                if (!Runtime.CheckWitness(admin())) return false;
+                if (!checkAdmin()) return false;
                 return setStructConfig();
             }
 
@@ -165,8 +211,7 @@ namespace OracleCOntract2
             if (operation == "upgrade")
             {
                 //不是管理员 不能操作
-                if (!Runtime.CheckWitness(admin()))
-                    return false;
+                if (!checkAdmin()) return false;
 
                 if (args.Length != 1 && args.Length != 9)
                     return false;
@@ -206,9 +251,36 @@ namespace OracleCOntract2
             return true;
         }
 
+        private static bool checkAdmin()
+        {
+            byte[] currAdmin = Storage.Get(Storage.CurrentContext, GetAccountKey(ADMIN_ACCOUNT));
+            if (currAdmin.Length > 0)
+            {
+                //当前地址和配置地址必须一致
+                if (!Runtime.CheckWitness(currAdmin)) return false;
+            }
+            else
+            {
+                if (!Runtime.CheckWitness(admin)) return false;
+            }
+            return true;
+        }
+
+        public static bool setAccount(string key, byte[] address)
+        {
+            if (address.Length != 20)
+                throw new InvalidOperationException("The parameters address and to SHOULD be 20-byte addresses.");
+
+            Storage.Put(Storage.CurrentContext, GetAccountKey(key), address);
+
+            Operated(address, key.AsByteArray(), null, 0, EVENT_TYPE_SET_ACCOUNT);
+
+            return true;
+        }
+
         public static bool addParaAddrWhit(string para, byte[] addr, BigInteger state)
         {
-            if (!Runtime.CheckWitness(admin())) return false;
+            if (!checkAdmin()) return false;
 
             if (addr.Length != 20) return false;
 
@@ -217,7 +289,7 @@ namespace OracleCOntract2
             if (Storage.Get(Storage.CurrentContext, byteKey).AsBigInteger() != 0 || state == 0) return false;
 
             Storage.Put(Storage.CurrentContext, byteKey, state);
-
+             
             byte[] paraCountByteKey = GetParaCountKey(para);
 
             BigInteger paraCount = Storage.Get(Storage.CurrentContext, paraCountByteKey).AsBigInteger();
@@ -228,12 +300,14 @@ namespace OracleCOntract2
 
             Storage.Put(Storage.CurrentContext, paraCountByteKey, paraCount);
 
+            Operated(addr, para.AsByteArray(), null, state, EVENT_TYPE_SET_ADDR);
+
             return true;
         }
 
         public static bool removeParaAddrWhit(string para, byte[] addr)
         {
-            if (!Runtime.CheckWitness(admin())) return false;
+            if (!checkAdmin()) return false;
 
             byte[] paraAddrByteKey = GetParaAddrKey(para, addr);
 
@@ -291,16 +365,58 @@ namespace OracleCOntract2
 
         }
 
+        public static Object getConfigsWithPrefix(byte[] prefix)
+        {
+            int count = 0;
+
+            Iterator<byte[], byte[]> iterator = Storage.Find(Storage.CurrentContext, prefix);
+
+            while (iterator.Next())
+            { 
+               count++; 
+            }
+
+            var configs = new Object[count];
+
+            if (count == 0) return configs;
+
+            int index = 0;
+
+            Iterator<byte[], byte[]> iterator2 = Storage.Find(Storage.CurrentContext, prefix);
+
+            while (iterator2.Next())
+            { 
+                    NodeObj obj = new NodeObj();
+
+                    byte[] rawKey = iterator2.Key;
+
+                    int len = new byte[] { 0x00 }.Length;
+
+                    byte[] para = rawKey.Range(len, rawKey.Length - prefix.Length - len);
+
+                    obj.addr = para;
+                    obj.value = iterator2.Value.AsBigInteger();
+
+                    configs[index] = obj;
+
+                    index++; 
+            }
+
+            return configs; 
+        }
+
         public static bool setTypeA(string key, BigInteger value)
         {
             if (key == null || key == "") return false;
 
-            if (!Runtime.CheckWitness(admin())) return false;
+            if (!checkAdmin()) return false;
 
             byte[] byteKey = GetTypeAKey(key);
 
             Storage.Put(Storage.CurrentContext, byteKey, value);
 
+            byte[] currAdmin = Storage.Get(Storage.CurrentContext, GetAccountKey(ADMIN_ACCOUNT));
+            Operated(currAdmin, key.AsByteArray(), null, value,EVENT_TYPE_SET_TYPEA);
             return true;
         }
 
@@ -325,10 +441,14 @@ namespace OracleCOntract2
             BigInteger index = Storage.Get(Storage.CurrentContext, GetAddrIndexKey(key, addr)).AsBigInteger();
 
             Storage.Put(Storage.CurrentContext, GetTypeBKey(key, index), value);
+              
+            Operated(addr, key.AsByteArray(), null, value, EVENT_TYPE_SET_TYPEB);
 
             computeAverage(key);
 
-            computeMedian(key);
+            BigInteger medianValue = computeMedian(key);
+
+            Operated(addr, key.AsByteArray(), null, medianValue, EVENT_TYPE_SET_MEDIAN);
 
             return true;
         }
@@ -364,6 +484,7 @@ namespace OracleCOntract2
             config.fee_rate_c = getTypeA("fee_rate_c"); //148;
 
             Storage.Put(Storage.CurrentContext, GetConfigKey("structConfig".AsByteArray()), Helper.Serialize(config));
+            
             return true;
         }
 
