@@ -53,7 +53,7 @@ namespace OracleCOntract2
             * warning_rate_c 120
             */
             /*设置锚定物白名单
-             *anchor_type_gold   1:黑名单 0:白名单
+             *anchor_type_gold   0:黑名单 非0:白名单
              */
             if (operation == "setTypeA")
             {
@@ -120,7 +120,8 @@ namespace OracleCOntract2
 
                 return removeParaAddrWhit(para, addr);
             }
-            
+
+            //根据Para查询已授权喂价器地址和状态
             if (operation == "getApprovedAddrs")
             {
                 if (args.Length != 1) return false;
@@ -132,6 +133,7 @@ namespace OracleCOntract2
                 return getDataWithPrefix(prefix);
             }
 
+            //根据Para查询喂价器地址和价格
             if (operation == "getAddrWithParas")
             {
                 if (args.Length != 1) return false;
@@ -308,8 +310,12 @@ namespace OracleCOntract2
 
             byte[] paraCountByteKey = GetParaCountKey(para);
 
-            Storage.Put(Storage.CurrentContext, GetAddrIndexKey(para, addr), 0);
+            BigInteger index = Storage.Get(Storage.CurrentContext, GetAddrIndexKey(para, addr)).AsBigInteger();
 
+            Storage.Delete(Storage.CurrentContext, GetTypeBKey(para, index));
+             
+            Storage.Put(Storage.CurrentContext, GetAddrIndexKey(para, addr), 0);
+            
             return true;
         }
 
@@ -545,7 +551,7 @@ namespace OracleCOntract2
         //C端清算折扣  90
         public BigInteger liquidate_dis_rate_c;
 
-        //C端费用率  15秒的费率 乘以10的16次方  666,666
+        //C端费用率  15秒的费率 乘以10的16次方  66,666,666
         public BigInteger fee_rate_c;
 
         //C端最高可清算抵押率  160
@@ -554,7 +560,7 @@ namespace OracleCOntract2
         //C端伺机者可清算抵押率 120
         public BigInteger liquidate_line_rateT_c;
 
-        //C端发行费用 1
+        //C端发行费用 1000
         public BigInteger issuing_fee_c;
 
         //B端发行费用  1000000000
