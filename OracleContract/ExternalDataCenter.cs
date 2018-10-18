@@ -137,23 +137,16 @@ namespace OracleCOntract2
                 if (args.Length != 1) return false;
 
                 string para = (string)args[0];
-                 
-                byte[] prefix = GetAddrIndexKey(para, new byte[]{ });
-                 
-                return getDataWithPrefix(prefix); 
+
+                BigInteger value = 0;
+
+                byte[] bytePara = GetTypeBKey(para, value);
+
+                byte[] prefix = bytePara.Range(0,bytePara.Length - value.AsByteArray().Length);
+                
+                return getDataWithPrefix(prefix);
             }
-
-            if (operation == "getAddrWithConfigs")
-            { 
-                if (args.Length != 1) return false;
-
-                byte[] addr = (byte[])args[0];
-
-                byte[] prefix = new byte[] { }.Concat(addr);
-
-                return getConfigsWithPrefix(prefix);
-            }
-
+             
             /* 设置代币价格  
             *  neo_price    50*100000000
             *  gas_price    20*100000000  
@@ -364,47 +357,7 @@ namespace OracleCOntract2
             return array;
 
         }
-
-        public static Object getConfigsWithPrefix(byte[] prefix)
-        {
-            int count = 0;
-
-            Iterator<byte[], byte[]> iterator = Storage.Find(Storage.CurrentContext, prefix);
-
-            while (iterator.Next())
-            { 
-               count++; 
-            }
-
-            var configs = new Object[count];
-
-            if (count == 0) return configs;
-
-            int index = 0;
-
-            Iterator<byte[], byte[]> iterator2 = Storage.Find(Storage.CurrentContext, prefix);
-
-            while (iterator2.Next())
-            { 
-                    NodeObj obj = new NodeObj();
-
-                    byte[] rawKey = iterator2.Key;
-
-                    int len = new byte[] { 0x00 }.Length;
-
-                    byte[] para = rawKey.Range(len, rawKey.Length - prefix.Length - len);
-
-                    obj.addr = para;
-                    obj.value = iterator2.Value.AsBigInteger();
-
-                    configs[index] = obj;
-
-                    index++; 
-            }
-
-            return configs; 
-        }
-
+        
         public static bool setTypeA(string key, BigInteger value)
         {
             if (key == null || key == "") return false;
@@ -584,7 +537,7 @@ namespace OracleCOntract2
         public class Config
         {
             //B端抵押率   50
-            public BigInteger liquidate_line_rate_b;
+        public BigInteger liquidate_line_rate_b;
 
         //C端抵押率  150
         public BigInteger liquidate_line_rate_c;
@@ -592,7 +545,7 @@ namespace OracleCOntract2
         //C端清算折扣  90
         public BigInteger liquidate_dis_rate_c;
 
-        //C端费用率  15秒的费率 乘以10的8次方  148
+        //C端费用率  15秒的费率 乘以10的16次方  666,666
         public BigInteger fee_rate_c;
 
         //C端最高可清算抵押率  160
