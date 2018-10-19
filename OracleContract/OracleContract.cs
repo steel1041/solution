@@ -7,7 +7,7 @@ using Neo.SmartContract.Framework.Services.System;
 using System.Collections.Generic;
 using System.ComponentModel;
 
-namespace OracleCOntract2
+namespace OracleContract
 {
     public class Contract1 : SmartContract
     { 
@@ -46,7 +46,7 @@ namespace OracleCOntract2
         {
             var callscript = ExecutionEngine.CallingScriptHash;
 
-            var magicstr = "2018-09-26 14:16";
+            var magicstr = "2018-10-16 14:16";
 
             /*设置全局参数
             * liquidate_rate_b 150
@@ -130,7 +130,7 @@ namespace OracleCOntract2
 
                 byte[] prefix = GetParaAddrKey(para, new byte[]{ });
                   
-                return getDataWithPrefix(prefix);
+                return getDataWithPrefix(prefix,"");
             }
 
             //根据Para查询喂价器地址和价格
@@ -139,14 +139,10 @@ namespace OracleCOntract2
                 if (args.Length != 1) return false;
 
                 string para = (string)args[0];
+                  
+                byte[] prefix = GetAddrIndexKey(para, new byte[] { });
 
-                BigInteger value = 0;
-
-                byte[] bytePara = GetTypeBKey(para, value);
-
-                byte[] prefix = bytePara.Range(0,bytePara.Length - value.AsByteArray().Length);
-                
-                return getDataWithPrefix(prefix);
+                return getDataWithPrefix(prefix,para);
             }
              
             /* 设置代币价格  
@@ -310,16 +306,16 @@ namespace OracleCOntract2
 
             byte[] paraCountByteKey = GetParaCountKey(para);
 
-            BigInteger index = Storage.Get(Storage.CurrentContext, GetAddrIndexKey(para, addr)).AsBigInteger();
+            BigInteger paraCount = Storage.Get(Storage.CurrentContext, GetAddrIndexKey(para, addr)).AsBigInteger();
 
-            Storage.Delete(Storage.CurrentContext, GetTypeBKey(para, index));
+            Storage.Delete(Storage.CurrentContext, GetTypeBKey(para, paraCount));
              
             Storage.Put(Storage.CurrentContext, GetAddrIndexKey(para, addr), 0);
             
             return true;
         }
 
-        public static Object getDataWithPrefix(byte[] prefix)
+        public static Object getDataWithPrefix(byte[] prefix,string para)
         {
             int count = 0;
 
@@ -350,10 +346,21 @@ namespace OracleCOntract2
                     byte[] rawKey = iterator2.Key;
 
                     byte[] addr = rawKey.Range(prefix.Length, rawKey.Length - prefix.Length);
-
+                     
                     obj.addr = addr;
-                    obj.value = iterator2.Value.AsBigInteger();
 
+                    if (para.Length != 0)
+                    {
+                        int paraCount = (int)iterator2.Value.AsBigInteger(); 
+                        BigInteger price = Storage.Get(Storage.CurrentContext, GetTypeBKey(para, paraCount)).AsBigInteger();
+                         
+                        obj.value = price;
+                    }
+                    else
+                    { 
+                        obj.value = iterator2.Value.AsBigInteger();
+                    }
+                     
                     array[index] = obj;
 
                     index++;
@@ -363,7 +370,7 @@ namespace OracleCOntract2
             return array;
 
         }
-        
+         
         public static bool setTypeA(string key, BigInteger value)
         {
             if (key == null || key == "") return false;
