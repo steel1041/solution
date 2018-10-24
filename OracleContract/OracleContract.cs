@@ -6,6 +6,7 @@ using System.Numerics;
 using Neo.SmartContract.Framework.Services.System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Collections;
 
 namespace OracleContract
 {
@@ -17,8 +18,9 @@ namespace OracleContract
         private static readonly int EVENT_TYPE_SET_TYPEB = 2;
         private static readonly int EVENT_TYPE_SET_ACCOUNT = 3;
         private static readonly int EVENT_TYPE_SET_ADDR = 4;
-        private static readonly int EVENT_TYPE_SET_MEDIAN = 5;
-         
+        private static readonly int EVENT_TYPE_SET_MEDIAN = 5; 
+        private static readonly int EVENT_TYPE_REMOVE_ADDR = 6;
+
         //管理员账户  
         [DisplayName("oracleOperator")]
         public static event Action<byte[], byte[], byte[], BigInteger, int> Operated;
@@ -46,8 +48,8 @@ namespace OracleContract
         {
             var callscript = ExecutionEngine.CallingScriptHash;
 
-            var magicstr = "2018-10-16 14:16";
-
+            var magicstr = "2018-10-24 14:10";
+        
             /*设置全局参数
             * liquidate_rate_b 150
             * warning_rate_c 120
@@ -144,24 +146,24 @@ namespace OracleContract
 
                 return getDataWithPrefix(prefix,para);
             }
-             
-            /* 设置代币价格  
-            *  neo_price    50*100000000
-            *  gas_price    20*100000000  
-            *  sds_price    0.08*100000000 
-            */
 
-            //设置锚定物对应100000000美元汇率
-            /*  
-             *  anchor_type_usd    1*100000000
-             *  anchor_type_cny    6.8*100000000
-             *  anchor_type_eur    0.875*100000000
-             *  anchor_type_jpy    120*100000000
-             *  anchor_type_gbp    0.7813 *100000000
-             *  anchor_type_gold   0.000838 * 100000000
-             */
+                /* 设置代币价格  
+                *  neo_price    50*100000000
+                *  gas_price    20*100000000  
+                *  sds_price    0.08*100000000 
+                */
 
-            if (operation == "setTypeB")
+                //设置锚定物对应100000000美元汇率
+                /*  
+                 *  anchor_type_usd    1*100000000
+                 *  anchor_type_cny    6.8*100000000
+                 *  anchor_type_eur    0.875*100000000
+                 *  anchor_type_jpy    120*100000000
+                 *  anchor_type_gbp    0.7813 *100000000
+                 *  anchor_type_gold   0.000838 * 100000000
+                 */
+
+                if (operation == "setTypeB")
             {
                 if (args.Length != 3) return false;
 
@@ -305,13 +307,15 @@ namespace OracleContract
             Storage.Delete(Storage.CurrentContext, paraAddrByteKey);
 
             byte[] paraCountByteKey = GetParaCountKey(para);
+              
+            BigInteger index = Storage.Get(Storage.CurrentContext, GetAddrIndexKey(para, addr)).AsBigInteger();
 
-            BigInteger paraCount = Storage.Get(Storage.CurrentContext, GetAddrIndexKey(para, addr)).AsBigInteger();
+            Storage.Delete(Storage.CurrentContext, GetTypeBKey(para, index));
 
-            Storage.Delete(Storage.CurrentContext, GetTypeBKey(para, paraCount));
-             
-            Storage.Put(Storage.CurrentContext, GetAddrIndexKey(para, addr), 0);
-            
+            Storage.Delete(Storage.CurrentContext, GetAddrIndexKey(para, addr));
+
+            Operated(addr, para.AsByteArray(), null, index, EVENT_TYPE_REMOVE_ADDR);
+
             return true;
         }
 
@@ -400,7 +404,7 @@ namespace OracleContract
         {
             if (key == null || key == "") return false;
 
-            if (value < 0) return false;
+            if (value <= 0) return false;
 
             if (!Runtime.CheckWitness(addr)) return false;
 
@@ -409,9 +413,7 @@ namespace OracleContract
             Storage.Put(Storage.CurrentContext, GetTypeBKey(key, index), value);
               
             Operated(addr, key.AsByteArray(), null, value, EVENT_TYPE_SET_TYPEB);
-
-            computeAverage(key);
-
+             
             BigInteger medianValue = computeMedian(key);
 
             Operated(addr, key.AsByteArray(), null, medianValue, EVENT_TYPE_SET_MEDIAN);
@@ -463,57 +465,40 @@ namespace OracleContract
         {
             return Storage.Get(Storage.CurrentContext, GetMedianKey(key)).AsBigInteger();
         }
-
-        public static BigInteger computeAverage(string key)
+        
+            public static BigInteger computeMedian(string key)
         {
             BigInteger paraCount = Storage.Get(Storage.CurrentContext, GetParaCountKey(key)).AsBigInteger();
-
-            var prices = new BigInteger[(int)paraCount];
-
-            for (int i = 0; i < prices.Length; i++)
-            {
-                BigInteger keyIndex = i + 1;
-                byte[] byteKey = GetTypeBKey(key, keyIndex);
-                BigInteger val = Storage.Get(Storage.CurrentContext, byteKey).AsBigInteger();
-
-                if (val != 0)
-                {
-                    prices[i] = val;
-                }
-            }
-
-            BigInteger sum = 0;
-            for (int i = 0; i < prices.Length; i++)
-            {
-                sum = sum + prices[i];
-            }
-
-            BigInteger value = sum / prices.Length;
-
-            Storage.Put(Storage.CurrentContext, GetAverageKey(key), value);
              
-            return value;
-        }
-
-        public static BigInteger computeMedian(string key)
-        {
-            BigInteger paraCount = Storage.Get(Storage.CurrentContext, GetParaCountKey(key)).AsBigInteger();
-
-            var prices = new BigInteger[(int)paraCount];
-
-            for (int i = 0; i < prices.Length; i++)
+            int s = 0;
+            for (int i = 0; i < (int)paraCount; i++)
             {
-                BigInteger keyIndex = i + 1;
-
+                int keyIndex = i + 1;
                 byte[] byteKey = GetTypeBKey(key, keyIndex);
                 BigInteger val = Storage.Get(Storage.CurrentContext, byteKey).AsBigInteger();
 
-                if (val != 0)
-                {
-                    prices[i] = val;
+                if (val > 0)
+                { 
+                    s++;
                 }
             }
 
+            var prices = new BigInteger[s];
+
+            int x = 0;
+            for (int i = 0; i < (int)paraCount; i++)
+            {
+                int keyIndex = i + 1;
+                byte[] byteKey = GetTypeBKey(key, keyIndex);
+                BigInteger val = Storage.Get(Storage.CurrentContext, byteKey).AsBigInteger();
+
+                if (val > 0)
+                {
+                    prices[x] = val;
+                    x++;
+                }
+            }
+             
             BigInteger temp;
             for (int i = 0; i < prices.Length; i++)
             {
@@ -529,18 +514,23 @@ namespace OracleContract
             }
 
             BigInteger value = 0;
-            if (prices.Length % 2 != 0)
-            {
-                value = prices[(prices.Length + 1) / 2 - 1];
-            }
-            else
-            {
-                int index = prices.Length / 2;
 
-                value = (prices[index] + prices[index - 1]) / 2;
-            }
+            if (prices.Length > 0)
+            {
 
-            Storage.Put(Storage.CurrentContext, GetMedianKey(key), value);
+                if (prices.Length % 2 != 0)
+                {
+                    value = prices[(prices.Length + 1) / 2 - 1];
+                }
+                else
+                {
+                    int index = prices.Length / 2;
+
+                    value = (prices[index] + prices[index - 1]) / 2;
+                }
+
+                Storage.Put(Storage.CurrentContext, GetMedianKey(key), value); 
+            }
 
             return value;
         }
