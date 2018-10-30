@@ -392,7 +392,6 @@ namespace OracleContract
 
         public static BigInteger getTypeA(string key)
         {
-
             byte[] byteKey = GetTypeAKey(key);
 
             BigInteger value = Storage.Get(Storage.CurrentContext, byteKey).AsBigInteger();
@@ -456,11 +455,6 @@ namespace OracleContract
             return true;
         }
 
-        public static BigInteger getAverage(string key)
-        {
-            return Storage.Get(Storage.CurrentContext, GetAverageKey(key)).AsBigInteger();
-        }
-
         public static BigInteger getMedian(string key)
         {
             return Storage.Get(Storage.CurrentContext, GetMedianKey(key)).AsBigInteger();
@@ -469,34 +463,30 @@ namespace OracleContract
             public static BigInteger computeMedian(string key)
         {
             BigInteger paraCount = Storage.Get(Storage.CurrentContext, GetParaCountKey(key)).AsBigInteger();
-             
-            int s = 0;
-            for (int i = 0; i < (int)paraCount; i++)
+
+            int count = (int)paraCount;
+
+            var tempArray = new BigInteger[count];
+
+            int len = 0;
+            for (int i = 0; i < count; i++)
             {
                 int keyIndex = i + 1;
                 byte[] byteKey = GetTypeBKey(key, keyIndex);
                 BigInteger val = Storage.Get(Storage.CurrentContext, byteKey).AsBigInteger();
 
-                if (val > 0)
-                { 
-                    s++;
+                if (val > 0) 
+                {
+                    tempArray[len] = val;
+                    len++;
                 }
             }
 
-            var prices = new BigInteger[s];
+            var prices = new BigInteger[len];
 
-            int x = 0;
-            for (int i = 0; i < (int)paraCount; i++)
+            for (int i = 0; i < prices.Length; i++)
             {
-                int keyIndex = i + 1;
-                byte[] byteKey = GetTypeBKey(key, keyIndex);
-                BigInteger val = Storage.Get(Storage.CurrentContext, byteKey).AsBigInteger();
-
-                if (val > 0)
-                {
-                    prices[x] = val;
-                    x++;
-                }
+                prices[i] = tempArray[i];
             }
              
             BigInteger temp;
