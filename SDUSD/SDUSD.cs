@@ -1,10 +1,11 @@
 ﻿using Neo.SmartContract.Framework;
 using Neo.SmartContract.Framework.Services.Neo;
+using Neo.SmartContract.Framework.Services.System;
 using Helper = Neo.SmartContract.Framework.Helper;
 using System;
 using System.ComponentModel;
 using System.Numerics;
-using Neo.SmartContract.Framework.Services.System;
+
 
 namespace SDUSD
 {
@@ -62,7 +63,7 @@ namespace SDUSD
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-09-21 16:40:10";
+            var magicstr = "2018-10-18 17:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -96,8 +97,9 @@ namespace SDUSD
                     if (amount <= 0)
                         throw new InvalidOperationException("The parameter amount MUST be greater than 0.");
 
-                    //if (!IsPayable(to))
-                    //    return false;
+                    if (!IsPayable(to))
+                        return false;
+
                     //两种方式转账合并一起
                     if (!Runtime.CheckWitness(from) && from.AsBigInteger() != callscript.AsBigInteger())
                         return false;
@@ -193,6 +195,26 @@ namespace SDUSD
             }
             return false;
         }
+       
+        public static string name()
+        {
+            return "Standards USD";
+        }
+        public static string symbol()
+        {
+            return "SDUSD";
+        }
+
+        public static byte decimals()
+        {
+            return 8;
+        }
+
+        //nep5 func
+        public static BigInteger totalSupply()
+        {
+            return Storage.Get(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray())).AsBigInteger();
+        }
 
         public static bool setAccount(string key, byte[] address)
         {
@@ -218,25 +240,6 @@ namespace SDUSD
             return true;
         }
 
-        //nep5 func
-        public static BigInteger totalSupply()
-        {
-            return Storage.Get(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray())).AsBigInteger();
-        }
-
-        public static string name()
-        {
-            return "Standards USD";
-        }
-        public static string symbol()
-        {
-            return "SDUSD";
-        }
-
-        public static byte decimals()
-        {
-            return 8;
-        }
 
         private static bool destory(byte[] addr, BigInteger value)
         {
@@ -336,8 +339,7 @@ namespace SDUSD
                 BigInteger to_value = Storage.Get(Storage.CurrentContext, toKey).AsBigInteger();
                 Storage.Put(Storage.CurrentContext, toKey, to_value + value);
             }
-            //记录交易信息
-            //setTxInfo(from, to, value);
+
             //notify
             Transferred(from, to, value);
             return true;
@@ -360,34 +362,10 @@ namespace SDUSD
             return true;
         }
 
-
-        public static TransferInfo getTXInfo(byte[] txid)
+        private static bool IsPayable(byte[] to)
         {
-            byte[] v = Storage.Get(Storage.CurrentContext, getTxidKey(txid));
-            if (v.Length == 0)
-                return null;
-            //新式实现方法只要一行
-            return (TransferInfo)Helper.Deserialize(v);
-        }
-
-        private static void setTxInfo(byte[] from, byte[] to, BigInteger value)
-        {
-            TransferInfo info = new TransferInfo();
-            info.from = from;
-            info.to = to;
-            info.value = value;
-            byte[] txinfo = Helper.Serialize(info);
-
-            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
-            var keyTxid = getTxidKey(txid);
-            Storage.Put(Storage.CurrentContext, keyTxid, txinfo);
-        }
-
-        public class TransferInfo
-        {
-            public byte[] from;
-            public byte[] to;
-            public BigInteger value;
+            var c = Blockchain.GetContract(to); //0.1
+            return c == null || c.IsPayable;
         }
 
     }

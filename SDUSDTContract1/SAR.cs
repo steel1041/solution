@@ -10,7 +10,7 @@ namespace SARContract
 {
     public class SAR : SmartContract
     {
-        /*存储结构有     
+        /** 存储结构有     
         * map(address,balance)   存储地址余额   key = 0x11+address
         * map(txid,TransferInfo) 存储交易详情   key = 0x13+txid
         * map(address,SAR)   存储SAR信息        key = 0x12+address
@@ -18,9 +18,15 @@ namespace SARContract
         * map(str,address)      存储配置信息    key = 0x15+str
         */
 
-        /* addr,sartxid,txid,type,operated*/
+        /** 操作历史记录
+         * addr,sartxid,txid,type,operated*/
         [DisplayName("sarOperator4C")]
         public static event Action<byte[], byte[], byte[], BigInteger, BigInteger> Operated;
+
+        /** 手续费扣取记录
+         * addr,sartxid,txid,feeSDUSD,feeSDS*/
+        [DisplayName("feeOperator4C")]
+        public static event Action<byte[], byte[], byte[], BigInteger, BigInteger> FeeOperated;
 
         public delegate object NEP5Contract(string method, object[] args);
 
@@ -59,6 +65,9 @@ namespace SARContract
         
         //新合约收款账户
         private const string STORAGE_ACCOUNT_NEW = "storage_account_new";
+
+        //老合约地址
+        private const string STORAGE_ACCOUNT_OLD = "storage_account_old";
 
         //SDS合约账户
         private const string SDS_ACCOUNT = "sds_account";
@@ -135,7 +144,7 @@ namespace SARContract
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-09-26 14:40:10";
+            var magicstr = "2018-11-21 14:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
             {
@@ -205,8 +214,6 @@ namespace SARContract
                     BigInteger fee = (BigInteger)args[9];
                     BigInteger sdsFee = (BigInteger)args[10];
 
-                    if (!Runtime.CheckWitness(addr)) return false;
-
                     SARInfo sar = new SARInfo();
                     sar.assetType = assetType;
                     sar.bondDrawed = bondDrawed;
@@ -221,7 +228,7 @@ namespace SARContract
                     sar.sdsFee = sdsFee;
 
                     //存的老合约地址
-                    byte[] account = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+                    byte[] account = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT_OLD.AsByteArray()));
                     if (account.AsBigInteger() != callscript.AsBigInteger()) return false;
                     return createSAR4C(addr, sar);
                 }
@@ -237,12 +244,11 @@ namespace SARContract
                 //强制迁移
                 if (operation == "forceMigrate")
                 {
-                    if (args.Length != 2) return false;
-                    byte[] otherAddr = (byte[])args[0];
-                    byte[] addr = (byte[])args[1];
+                    if (args.Length != 1) return false;
+                    byte[] addr = (byte[])args[0];
 
-                    if (!Runtime.CheckWitness(addr)) return false;
-                    return forceMigrate(otherAddr, addr);
+                    if (!checkAdmin()) return false;
+                    return forceMigrate(addr);
                 }
                 //查询债仓记录
                 if (operation == "getSAR4C")
@@ -250,7 +256,10 @@ namespace SARContract
                     if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
 
-                    return Helper.Deserialize(getSAR4C(addr)) as SARInfo;
+                    byte[] sarInfo = getSAR4C(addr);
+                    if (sarInfo.Length == 0)
+                        return new SARInfo(); 
+                    return Helper.Deserialize(sarInfo) as SARInfo;
                 }
                 //查询债仓详细操作记录
                 if (operation == "getSARTxInfo")
@@ -507,8 +516,10 @@ namespace SARContract
 
             SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
             BigInteger sdsFee = sarInfo.sdsFee;
-            if (sdsFee > 0) {
-                byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+            if (sdsFee > 0)
+            {
+                //byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+                byte[] from = ExecutionEngine.ExecutingScriptHash;
                 byte[] sdsAsset = Storage.Get(Storage.CurrentContext, getAccountKey(SDS_ACCOUNT.AsByteArray()));
                 //从合约转普通地址
                 var SDSDContract = (NEP5Contract)sdsAsset.ToDelegate();
@@ -519,6 +530,9 @@ namespace SARContract
                 var nep5Contract = (NEP5Contract)sdsAsset.ToDelegate();
                 if (!(bool)nep5Contract("transfer_contract", arg))
                     throw new InvalidOperationException("The transfer is exception.");
+            }
+            else {
+                return false;
             }
             sarInfo.sdsFee = 0;
             Storage.Put(Storage.CurrentContext,key,Helper.Serialize(sarInfo));
@@ -537,9 +551,6 @@ namespace SARContract
             if (mount <= 0)
                 throw new InvalidOperationException("The parameter mount MUST be greater than 0.");
             
-            //check state
-            //if (!checkState(SAR_STATE))
-            //    throw new InvalidOperationException("The sar state MUST not be pause.");
 
             var key = getSARKey(addr);
             byte[] bytes = getSAR4C(addr);
@@ -548,26 +559,16 @@ namespace SARContract
 
             SARInfo sarInfo = Helper.Deserialize(bytes) as SARInfo;
             BigInteger sdsFee = sarInfo.sdsFee;
-            BigInteger fee = sarInfo.fee;
+
+            if (sdsFee <= 0) return false;
 
             if(mount > sdsFee) throw new InvalidOperationException("The operation is exception.");
 
-            byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
-            BigInteger sdsPrice = 0;
-            {
-                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-                object[] arg = new object[1];
-                arg[0] = CONFIG_PRICE_SDS;
-                sdsPrice = (BigInteger)OracleContract("getTypeB", arg);
-            }
-
-            //BigInteger needFee = fee * EIGHT_POWER/ sdsPrice;
-            //if((sdsFee - mount) < needFee) throw new InvalidOperationException("The operation is exception.");
-
             if (sdsFee > 0)
             {
-                byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+                byte[] from = ExecutionEngine.ExecutingScriptHash;
                 byte[] sdsAsset = Storage.Get(Storage.CurrentContext, getAccountKey(SDS_ACCOUNT.AsByteArray()));
+
                 //从合约转普通地址
                 var SDSDContract = (NEP5Contract)sdsAsset.ToDelegate();
                 object[] arg = new object[3];
@@ -616,16 +617,15 @@ namespace SARContract
             byte[] newSARID = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT_NEW.AsByteArray()));
             if (newSARID.Length == 0) return false;
 
-            byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
-            if (from.Length == 0) return false;
-
+            byte[] from = ExecutionEngine.ExecutingScriptHash;
             {
                 object[] arg = new object[3];
                 arg[0] = from;
                 arg[1] = newSARID;
                 arg[2] = locked;
                 var nep5Contract = (NEP5Contract)nep5AssetID.ToDelegate();
-                if (!(bool)nep5Contract("transfer", arg)) return false;
+                if (!(bool)nep5Contract("transfer", arg))
+                    throw new InvalidOperationException("The operation is error.");
             }
 
             {
@@ -643,19 +643,17 @@ namespace SARContract
                 args[9]=  sarInfo.fee;
                 args[10]= sarInfo.sdsFee;
 
-                if (!(bool)newContract("createSAR4C", args))return false;
+                if (!(bool)newContract("createSAR4C", args))
+                    throw new InvalidOperationException("The operation is error.");
             }
             Storage.Delete(Storage.CurrentContext, key);
             return true;
         }
 
-        private static bool forceMigrate(byte[] otherAddr, byte[] addr)
+        private static bool forceMigrate(byte[] addr)
         {
             if (addr.Length != 20)
                 throw new InvalidOperationException("The parameter addr SHOULD be 20-byte addresses.");
-
-            if (otherAddr.Length != 20)
-                throw new InvalidOperationException("The parameter otherAddr SHOULD be 20-byte addresses.");
 
             //check SAR 
             if (checkState(SAR_STATE))
@@ -681,8 +679,7 @@ namespace SARContract
             byte[] newSARID = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT_NEW.AsByteArray()));
             if (newSARID.Length == 0) throw new InvalidOperationException("The param is exception.");
 
-            byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
-            if (from.Length == 0) throw new InvalidOperationException("The param is exception.");
+            byte[] from = ExecutionEngine.ExecutingScriptHash;
 
             //当前NEP5美元价格，需要从价格中心获取
             BigInteger nep5Price = 0;
@@ -713,7 +710,8 @@ namespace SARContract
                 arg[1] = newSARID;
                 arg[2] = locked;
                 var nep5Contract = (NEP5Contract)nep5AssetID.ToDelegate();
-                if (!(bool)nep5Contract("transfer", arg)) return false;
+                if (!(bool)nep5Contract("transfer", arg))
+                    throw new InvalidOperationException("The operation is error.");
             }
         
             {
@@ -730,41 +728,18 @@ namespace SARContract
                 args[8] = sarInfo.lastHeight;
                 args[9] = sarInfo.fee;
                 args[10] = sarInfo.sdsFee;
-                if (!(bool)newContract("createSAR4C", args)) return false;
+                if (!(bool)newContract("createSAR4C", args))
+                    throw new InvalidOperationException("The operation is error.");
             }
             Storage.Delete(Storage.CurrentContext, key);
             return true;
         }
 
 
-        private static bool migrateAsset(byte[] asset, byte[] to, BigInteger mount)
-        {
-            if(to.Length != 20)
-                throw new InvalidOperationException("The parameters to and to SHOULD be 20-byte addresses.");
-
-            if (mount <= 0)
-                throw new InvalidOperationException("The parameter mount MUST be greater than 0.");
-
-            byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
-
-            BigInteger nep5Price = 0;
-            {
-                var AssetContract = (NEP5Contract)asset.ToDelegate();
-                object[] arg = new object[3];
-                arg[0] = from;
-                arg[1] = to;
-                arg[2] = mount;
-                if(!(bool)AssetContract("transfer", arg))return false;
-            }
-            return true;
-
-        }
-
         //checkState 1:normal  0:stop
         private static bool checkState(string configKey) {
             byte[] key = getConfigKey(configKey.AsByteArray());
-            StorageMap config = Storage.CurrentContext.CreateMap(nameof(config));
-            BigInteger value = config.Get(key).AsBigInteger();
+            BigInteger value = Storage.Get(Storage.CurrentContext, key).AsBigInteger();
 
             if (value == 1) return true;
             return false;
@@ -824,7 +799,7 @@ namespace SARContract
 
         private static SARTransferDetail getSARTxInfo(byte[] txid)
         {
-            byte[] v = Storage.Get(Storage.CurrentContext, txid);
+            byte[] v = Storage.Get(Storage.CurrentContext, getTxidKey(txid));
             if (v.Length == 0)
                 return null;
             return (SARTransferDetail)Helper.Deserialize(v);
@@ -1082,16 +1057,13 @@ namespace SARContract
         private static BigInteger getConfig(string configKey)
         {
             byte[] key = getConfigKey(configKey.AsByteArray());
-            StorageMap config = Storage.CurrentContext.CreateMap(nameof(config));
-
-            return config.Get(key).AsBigInteger();
+            return Storage.Get(Storage.CurrentContext,key).AsBigInteger();
         }
 
         private static Boolean setConfig(string configKey, BigInteger value)
         {
             byte[] key = getConfigKey(configKey.AsByteArray());
-            StorageMap config = Storage.CurrentContext.CreateMap(nameof(config));
-            config.Put(key, value);
+            Storage.Put(Storage.CurrentContext,key,value);
             return true;
         }
 
@@ -1124,7 +1096,7 @@ namespace SARContract
             byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
             byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
             byte[] sdsAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDS_ACCOUNT.AsByteArray()));
-            byte[] to = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+            byte[] to = ExecutionEngine.ExecutingScriptHash;
 
             //get asset price
             BigInteger sdsPrice = 0;
@@ -1185,12 +1157,14 @@ namespace SARContract
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_WIPE;
             detail.operated = mount;
             detail.hasLocked = locked;
-            detail.hasDrawed = hasDrawed;
+            detail.hasDrawed = sarInfo.hasDrawed;
 
             Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
 
             //触发操作事件
             Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_WIPE, mount);
+
+            FeeOperated(addr, sarInfo.txid, txid, needUSDFee, needFee);
             return true;
         }
 
@@ -1255,7 +1229,7 @@ namespace SARContract
                 arg[2] = mount;
                 var nep5Contract = (NEP5Contract)nep5AssetID.ToDelegate();
 
-                if (!(bool)nep5Contract("transfer", arg)) return false;
+                if (!(bool)nep5Contract("transfer", arg)) throw new InvalidOperationException("The operation is error.");
             }
 
             //重新设置锁定量
@@ -1318,9 +1292,7 @@ namespace SARContract
             byte[] nep5AssetID = Storage.Get(Storage.CurrentContext, getAccountKey(assetType.AsByteArray()));
             byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
             byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext,getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
-            byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
-            if (from.Length == 0)
-                throw new InvalidOperationException("The param is exception.");
+            byte[] from = ExecutionEngine.ExecutingScriptHash;
 
             {
                 var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
@@ -1368,6 +1340,17 @@ namespace SARContract
             var key = getSARKey(addr);
             byte[] bytes = getSAR4C(addr);
             if (bytes.Length > 0) throw new InvalidOperationException("The sar can  be null.");
+
+            //验证资产配置是否OK
+            byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
+            BigInteger assetPrice = 0;
+            {
+                var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
+                object[] arg = new object[1];
+                arg[0] = assetType;
+                assetPrice = (BigInteger)OracleContract("getTypeB", arg);
+            }
+            if (assetPrice <= 0) return false;
 
             //交易ID 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
@@ -1426,8 +1409,8 @@ namespace SARContract
             //get nep5 asset
             byte[] nep5AssetID = Storage.Get(Storage.CurrentContext, getAccountKey(assetType.AsByteArray()));
 
-            //current account
-            byte[] to = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+            //current contract
+            byte[] to = ExecutionEngine.ExecutingScriptHash;
             if (to.Length == 0)
                 throw new InvalidOperationException("The parameter to SHOULD be greater than 0.");
 
@@ -1442,8 +1425,9 @@ namespace SARContract
                 throw new InvalidOperationException("The operation is exception.");
 
             //设置锁仓的数量
+            sarInfo.locked = sarInfo.locked + lockMount;
             BigInteger currLock = sarInfo.locked;
-            sarInfo.locked = currLock + lockMount;
+
             Storage.Put(Storage.CurrentContext, key,Helper.Serialize(sarInfo));
 
             var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
@@ -1485,9 +1469,8 @@ namespace SARContract
             byte[] sdsAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDS_ACCOUNT.AsByteArray()));
 
             //current account
-            byte[] to = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
-            if (to.Length == 0)
-                throw new InvalidOperationException("The parameter to SHOULD be greater than 0.");
+            //byte[] to = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+            byte[] to = ExecutionEngine.ExecutingScriptHash;
 
             object[] arg = new object[3];
             arg[0] = addr;
@@ -1584,9 +1567,7 @@ namespace SARContract
             BigInteger totalSupply = 0;
             {
                 var SDUSDContract = (NEP5Contract)sdusdAssetID.ToDelegate();
-                object[] arg = new object[2];
-                arg[0] = addr;
-                arg[1] = drawMount;
+                object[] arg = new object[0];
                 totalSupply = (BigInteger)SDUSDContract("totalSupply", arg);
             }
 
@@ -1603,15 +1584,6 @@ namespace SARContract
                 if (!(bool)SDUSDContract("increase", arg))
                     throw new InvalidOperationException("The sdusd increased error.");
             }
-
-            //get asset price
-            //BigInteger sdsPrice = 0;
-            //{
-            //    var OracleContract = (NEP5Contract)oracleAssetID.ToDelegate();
-            //    object[] arg = new object[1];
-            //    arg[0] = CONFIG_PRICE_SDS;
-            //    sdsPrice = (BigInteger)OracleContract("getTypeB", arg);
-            //}
 
             //cal fee
             uint blockHeight = Blockchain.GetHeight();
@@ -1644,7 +1616,7 @@ namespace SARContract
             detail.type = (int)ConfigTranType.TRANSACTION_TYPE_DRAW;
             detail.operated = drawMount;
             detail.hasLocked = locked;
-            detail.hasDrawed = hasDrawed;
+            detail.hasDrawed = sarInfo.hasDrawed;
             Storage.Put(Storage.CurrentContext, getTxidKey(txid), Helper.Serialize(detail));
 
             //notify
@@ -1674,6 +1646,8 @@ namespace SARContract
             BigInteger sdsFee = sarInfo.sdsFee;
             BigInteger bondDrawed = sarInfo.bondDrawed;
             string assetType = sarInfo.assetType;
+
+            if (locked > 0) throw new InvalidOperationException("The locked count must be 0.");
 
             if (hasDrawed > 0) throw new InvalidOperationException("The expand count must be 0.");
 

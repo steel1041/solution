@@ -83,54 +83,72 @@ namespace SNeoContract
                 var inputs = tx.GetInputs();
                 var outputs = tx.GetOutputs();
 
-                //检查输入是不是有被标记过
-                for (var i = 0; i < inputs.Length; i++)
-                {
-                    byte[] coinid = inputs[i].PrevHash.Concat(new byte[] { 0, 0 });
-                    if (inputs[i].PrevIndex == 0)//如果utxo n为0 的话，是有可能是一个标记utxo的
-                    {
-                        byte[] target = Storage.Get(Storage.CurrentContext, coinid);
-                        if (target.Length > 0)
-                        {
-                            if (inputs.Length > 1 || outputs.Length != 1)//使用标记coin的时候只允许一个输入\一个输出
-                                return false;
+                //ClaimTransaction = 0x02   ContractTransaction = 0x80
+                var type = (byte)tx.Type;
 
-                            //如果只有一个输入，一个输出，并且目的转账地址就是授权地址
-                            //允许转账
-                            if (outputs[0].ScriptHash.AsBigInteger() == target.AsBigInteger())
-                                return true;
-                            else//否则不允许
-                                return false;
+                //NEO转账
+                if (type == 0x80)
+                {
+                    //检查输入是不是有被标记过
+                    for (var i = 0; i < inputs.Length; i++)
+                    {
+                        byte[] coinid = inputs[i].PrevHash.Concat(new byte[] { 0, 0 });
+                        if (inputs[i].PrevIndex == 0)//如果utxo n为0 的话，是有可能是一个标记utxo的
+                        {
+                            byte[] target = Storage.Get(Storage.CurrentContext, coinid);
+                            if (target.Length > 0)
+                            {
+                                if (inputs.Length > 1 || outputs.Length != 1)//使用标记coin的时候只允许一个输入\一个输出
+                                    return false;
+
+                                //如果只有一个输入，一个输出，并且目的转账地址就是授权地址
+                                //允许转账
+                                if (outputs[0].ScriptHash.AsBigInteger() == target.AsBigInteger())
+                                    return true;
+                                else//否则不允许
+                                    return false;
+                            }
                         }
                     }
-                }
-                //走到这里没跳出，说明输入都没有被标记
-                var refs = tx.GetReferences();
-                BigInteger inputcount = 0;
-                for (var i = 0; i < refs.Length; i++)
-                {
-                    if (refs[i].AssetId.AsBigInteger() != neo_asset_id.AsBigInteger())
-                        return false;//不允许操作除gas以外的
-
-                    if (refs[i].ScriptHash.AsBigInteger() != curhash.AsBigInteger())
-                        return false;//不允许混入其它地址
-
-                    inputcount += refs[i].Value;
-                }
-                //检查有没有钱离开本合约
-                BigInteger outputcount = 0;
-                for (var i = 0; i < outputs.Length; i++)
-                {
-                    if (outputs[i].ScriptHash.AsBigInteger() != curhash.AsBigInteger())
+                    //走到这里没跳出，说明输入都没有被标记
+                    var refs = tx.GetReferences();
+                    BigInteger inputcount = 0;
+                    for (var i = 0; i < refs.Length; i++)
                     {
+                        if (refs[i].AssetId.AsBigInteger() != neo_asset_id.AsBigInteger())
+                            return false;//不允许操作除gas以外的
+
+                        if (refs[i].ScriptHash.AsBigInteger() != curhash.AsBigInteger())
+                            return false;//不允许混入其它地址
+
+                        inputcount += refs[i].Value;
+                    }
+                    //检查有没有钱离开本合约
+                    BigInteger outputcount = 0;
+                    for (var i = 0; i < outputs.Length; i++)
+                    {
+                        if (outputs[i].ScriptHash.AsBigInteger() != curhash.AsBigInteger())
+                        {
+                            return false;
+                        }
+                        outputcount += outputs[i].Value;
+                    }
+                    if (outputcount != inputcount)
+                        return false;
+                    //没有资金离开本合约地址，允许
+                    return true;
+                }
+                //ClaimGAS
+                if (type == 0x20) {
+                    if ((outputs.Length == 1) && (outputs[0].ScriptHash.AsBigInteger() == admin.AsBigInteger()))
+                    {
+                        return true;
+                    }
+                    else {
                         return false;
                     }
-                    outputcount += outputs[i].Value;
                 }
-                if (outputcount != inputcount)
-                    return false;
-                //没有资金离开本合约地址，允许
-                return true;
+
             }
             else if (Runtime.Trigger == TriggerType.Application)
             {
