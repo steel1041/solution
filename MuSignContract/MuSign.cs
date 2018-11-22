@@ -21,6 +21,15 @@ namespace MuSignContract
 
         private static byte[] getAdminKey(byte[] key) => new byte[] { 0x16 }.Concat(key);
 
+        public const Char CHAR_A = '\u0041';
+
+        public const Char CHAR_Z = '\u005A';
+
+        public const Char CHAR_a = '\u0061';
+
+        public const Char CHAR_z = '\u007A';
+
+
 
         public static Object Main(string operation, params object[] args)
         {
@@ -61,6 +70,32 @@ namespace MuSignContract
 
                     return getCallAccount(address);
                 }
+                if (operation == "init") {
+                    string name = (string)args[0];
+
+                    if (name.Length < 5) throw new InvalidOperationException("operation is error.");
+
+                    foreach (var c in name)
+                    {
+                        if ('A' <= c && c <= 'Z')
+                        {
+                            continue;
+                        }
+                        else if ('a' <= c && c <= 'z')
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException("operation is error.");
+                        }
+                    }
+                    Storage.Put(Storage.CurrentContext,"name",string.Concat("SD-",name));
+                }
+                if (operation == "getName")
+                {
+                    return Storage.Get(Storage.CurrentContext,"name".AsByteArray());
+                }
 
             }
             return false;
@@ -70,8 +105,6 @@ namespace MuSignContract
         {
             if (address.Length != 20)
                 throw new InvalidOperationException("The parameters address and to SHOULD be 20-byte addresses.");
-
-            Map<byte[], BigInteger> map = new Map<byte[], BigInteger>();
 
             Storage.Put(Storage.CurrentContext, getAdminKey(key.AsByteArray()), address);
             return true;

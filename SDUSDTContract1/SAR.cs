@@ -61,7 +61,7 @@ namespace SARContract
         private const string CONFIG_RELEASE_MAX = "debt_top_c";
 
         //合约收款账户
-        private const string STORAGE_ACCOUNT = "storage_account";   
+        //private const string STORAGE_ACCOUNT = "storage_account";   
         
         //新合约收款账户
         private const string STORAGE_ACCOUNT_NEW = "storage_account_new";
@@ -247,7 +247,6 @@ namespace SARContract
                     if (args.Length != 1) return false;
                     byte[] addr = (byte[])args[0];
 
-                    if (!checkAdmin()) return false;
                     return forceMigrate(addr);
                 }
                 //查询债仓记录
@@ -1219,7 +1218,7 @@ namespace SARContract
             if (mount > locked - hasDrawPNeo)
                 throw new InvalidOperationException("The param is exception.");
 
-            byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
+            byte[] from = ExecutionEngine.ExecutingScriptHash;
             if (from.Length == 0)
                 throw new InvalidOperationException("The param is exception.");
             {
