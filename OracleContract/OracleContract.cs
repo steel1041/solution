@@ -284,18 +284,7 @@ namespace OracleContract
             if (Storage.Get(Storage.CurrentContext, byteKey).AsBigInteger() != 0 || state == 0) return false;
 
             Storage.Put(Storage.CurrentContext, byteKey, state);
-
-            //byte[] paraCountByteKey = GetParaCountKey(para);
-
-            //BigInteger paraCount = Storage.Get(Storage.CurrentContext, paraCountByteKey).AsBigInteger();
-
-            //paraCount += 1;
-
-            //Storage.Put(Storage.CurrentContext, GetAddrIndexKey(para, addr), paraCount);
-
-            //Storage.Put(Storage.CurrentContext, paraCountByteKey, paraCount);
-
-
+            
             Operated(addr, para.AsByteArray(), null, state, EVENT_TYPE_SET_ADDR);
 
             return true;
@@ -314,23 +303,7 @@ namespace OracleContract
             map.Remove(addr);
 
             Storage.Put(Storage.CurrentContext, GetTypeBKey(para), map.Serialize());
-
-            //byte[] paraCountByteKey = GetParaCountKey(para);
-
-            //BigInteger paraCount = Storage.Get(Storage.CurrentContext,paraCountByteKey).AsBigInteger();
-
-            //BigInteger index = Storage.Get(Storage.CurrentContext, GetAddrIndexKey(para, addr)).AsBigInteger();
-
-            //BigInteger price = Storage.Get(Storage.CurrentContext, GetTypeBKey(para, paraCount)).AsBigInteger(); 
-
-            //Storage.Put(Storage.CurrentContext, GetTypeBKey(para, index), price); //用最后一个替换要删除的
-
-            //Storage.Delete(Storage.CurrentContext, GetTypeBKey(para, paraCount)); //删掉最后的价格
-
-            //Storage.Put(Storage.CurrentContext, paraCountByteKey, paraCount--);
-
-            //Storage.Delete(Storage.CurrentContext, GetAddrIndexKey(para, addr));
-
+            
             Operated(addr, para.AsByteArray(), null, 0, EVENT_TYPE_REMOVE_ADDR);
 
             return true;
@@ -461,18 +434,7 @@ namespace OracleContract
             map[addr] = value;
 
             Storage.Put(Storage.CurrentContext, GetTypeBKey(key), map.Serialize());
-             
-            /*
-            BigInteger index = Storage.Get(Storage.CurrentContext, GetTypeBKey(key,0)).AsBigInteger();
-
-            Storage.Put(Storage.CurrentContext, GetTypeBKey(key, index), value);
-
-            Operated(addr, key.AsByteArray(), null, value, EVENT_TYPE_SET_TYPEB);
-
-            BigInteger medianValue = computeMedian(key);
-
-            Operated(addr, key.AsByteArray(), null, medianValue, EVENT_TYPE_SET_MEDIAN);
-            */
+              
             return true;
         }
 
