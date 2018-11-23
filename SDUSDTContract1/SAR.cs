@@ -33,16 +33,6 @@ namespace SARContract
         //管理员账户
         private static readonly byte[] admin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
-        //因子
-        private const ulong factor = 100000000;
-
-        //总计数量
-        private const ulong TOTAL_AMOUNT = 0;
-
-        private const string TOTAL_SUPPLY = "totalSupply";
-
-        private const string TOTAL_GENERATE = "totalGenerate";
-
         //配置参数-SDS市场价格
         private const string CONFIG_PRICE_SDS = "sds_price";
 
@@ -59,9 +49,6 @@ namespace SARContract
 
         //最大发行量
         private const string CONFIG_RELEASE_MAX = "debt_top_c";
-
-        //合约收款账户
-        //private const string STORAGE_ACCOUNT = "storage_account";   
         
         //新合约收款账户
         private const string STORAGE_ACCOUNT_NEW = "storage_account_new";
@@ -155,7 +142,7 @@ namespace SARContract
                 //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了
                 var callscript = ExecutionEngine.CallingScriptHash;
                
-                //创建SAR记录
+                //正常创建SAR
                 if (operation == "openSAR4C")
                 {
                     if (args.Length != 2) return false;
@@ -165,40 +152,7 @@ namespace SARContract
                     if (!Runtime.CheckWitness(addr)) return false;
                     return openSAR4C(addr,assetType);
                 }
-                //创建SAR记录
-                if (operation == "batchSAR4C")
-                {
-                    if (args.Length != 11) return false;
-                    byte[] addr = (byte[])args[0];
-                    byte[] txid = (byte[])args[1];
-                    BigInteger locked = (BigInteger)args[2];
-                    BigInteger hasDrawed = (BigInteger)args[3];
-                    string assetType = (string)args[4];
-                    int status = (int)args[5];
-                    BigInteger bondLocked = (BigInteger)args[6];
-                    BigInteger bondDrawed = (BigInteger)args[7];
-                    uint lastHeight = (uint)args[8];
-                    BigInteger fee = (BigInteger)args[9];
-                    BigInteger sdsFee = (BigInteger)args[10];
-
-                    if (!checkAdmin()) return false;
-
-                    SARInfo sar = new SARInfo();
-                    sar.assetType = assetType;
-                    sar.bondDrawed = bondDrawed;
-                    sar.bondLocked = bondLocked;
-                    sar.hasDrawed = hasDrawed;
-                    sar.locked = locked;
-                    sar.owner = addr;
-                    sar.status = status;
-                    sar.txid = txid;
-                    sar.lastHeight = lastHeight;
-                    sar.fee = fee;
-                    sar.sdsFee = sdsFee;
-                    
-                    return batchSAR4C(addr,sar);
-                }
-                //创建SAR记录
+                //迁移创建SAR
                 if (operation == "createSAR4C")
                 {
                     if (args.Length != 11) return false;
@@ -232,7 +186,7 @@ namespace SARContract
                     if (account.AsBigInteger() != callscript.AsBigInteger()) return false;
                     return createSAR4C(addr, sar);
                 }
-                //转移SAR合约中NEP5资产
+                //迁移SAR合约至新合约
                 if (operation == "migrateSAR4C")
                 {
                     if (args.Length != 1) return false;
@@ -241,7 +195,7 @@ namespace SARContract
                     if (!Runtime.CheckWitness(addr)) return false;
                     return migrateSAR4C(addr);
                 }
-                //强制迁移
+                //强制迁移，所有人都能操作，系统关闭状态
                 if (operation == "forceMigrate")
                 {
                     if (args.Length != 1) return false;
@@ -249,7 +203,7 @@ namespace SARContract
 
                     return forceMigrate(addr);
                 }
-                //查询债仓记录
+                //查询SAR
                 if (operation == "getSAR4C")
                 {
                     if (args.Length != 1) return false;
@@ -260,7 +214,7 @@ namespace SARContract
                         return new SARInfo(); 
                     return Helper.Deserialize(sarInfo) as SARInfo;
                 }
-                //查询债仓详细操作记录
+                //查询SAR详细操作记录
                 if (operation == "getSARTxInfo")
                 {
                     if (args.Length != 1) return false;
@@ -744,19 +698,6 @@ namespace SARContract
             return false;
         }
 
-        private static bool batchSAR4C(byte[] addr, SARInfo sar)
-        {
-            //SAR是否存在
-            byte[] key = getSARKey(addr);
-
-            byte[] sarCurr = Storage.Get(Storage.CurrentContext, key);
-            if (sarCurr.Length > 0)
-                return false;
-
-            Storage.Put(Storage.CurrentContext,key,Helper.Serialize(sar));
-            return true;
-        }
-
         private static bool createSAR4C(byte[] addr, SARInfo sar)
         {
             //SAR是否存在
@@ -800,7 +741,7 @@ namespace SARContract
         {
             byte[] v = Storage.Get(Storage.CurrentContext, getTxidKey(txid));
             if (v.Length == 0)
-                return null;
+                return new SARTransferDetail();
             return (SARTransferDetail)Helper.Deserialize(v);
         }
 
