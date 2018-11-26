@@ -11,30 +11,26 @@ namespace SDUSD
 {
     public class SDUSD : SmartContract
     {
-        /*存储结构有     
-        * map(address,balance)   存储地址余额   key = 0x11+address
-        * map(txid,TransferInfo) 存储交易详情   key = 0x13+txid
-        * map(str,address)      存储配置信息    key = 0x15+str
-        */
 
         [DisplayName("transfer")]
         public static event Action<byte[], byte[], BigInteger> Transferred;
 
-        //管理员账户
-        private static readonly byte[] admin = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
+        //Default multiple signature committee account
+        private static readonly byte[] committee = Helper.ToScriptHash("AZ77FiX7i9mRUPF2RyuJD2L8kS6UDnQ9Y7");
 
+        //Static param
         private const string TOTAL_SUPPLY = "totalSupply";
-
-        //合约调用账户
         private const string CALL_ACCOUNT = "call_account";
-
-        //admin账户
         private const string ADMIN_ACCOUNT = "admin_account";
 
+        /*     
+        * Key wrapper
+        * map(address,balance)      key = 0x11+address
+        * map(txid,TransferInfo)    key = 0x13+txid
+        * map(str,address)          key = 0x15+str
+        */
         private static byte[] getAccountKey(byte[] account) => new byte[] { 0x15 }.Concat(account);
-
         private static byte[] getBalanceKey(byte[] addr) => new byte[] { 0x11 }.Concat(addr);
-
         private static byte[] getTotalKey(byte[] total) => new byte[] { 0x12 }.Concat(total);
 
         /// <summary>
@@ -55,15 +51,14 @@ namespace SDUSD
         {
             var magicstr = "2018-11-23 17:40:10";
 
-            if (Runtime.Trigger == TriggerType.Verification)//取钱才会涉及这里
+            if (Runtime.Trigger == TriggerType.Verification)
             {
                 return false;
             }
             else if (Runtime.Trigger == TriggerType.Application)
             {
-                //必须在入口函数取得callscript，调用脚本的函数，也会导致执行栈变化，再取callscript就晚了
                 var callscript = ExecutionEngine.CallingScriptHash;
-                //this is in nep5
+                //nep5 standard
                 if (operation == "totalSupply") return totalSupply();
                 if (operation == "name") return name();
                 if (operation == "symbol") return symbol();
@@ -90,7 +85,6 @@ namespace SDUSD
                     if (!IsPayable(to))
                         return false;
 
-                    //两种方式转账合并一起
                     if (!Runtime.CheckWitness(from) && from.AsBigInteger() != callscript.AsBigInteger())
                         return false;
                     return transfer(from, to, amount);
@@ -98,11 +92,11 @@ namespace SDUSD
                 if (operation == "setAccount")
                 {
                     if (args.Length != 2) return false;
-                    //操作地址，验证当前管理员账户
                     string key = (string)args[0];
                     byte[] address = (byte[])args[1];
-
+                    //only committee account can call this method
                     if (!checkAdmin()) return false;
+
                     return setAccount(key, address);
                 }
                 if (operation == "getAccount")
@@ -112,34 +106,33 @@ namespace SDUSD
 
                     return getAccount(key);
                 }
-                //增发代币
                 if (operation == "increase")
                 {
                     if (args.Length != 2) return false;
                     byte[] addr = (byte[])args[0];
                     BigInteger value = (BigInteger)args[1];
 
-                    //判断调用者是否是授权合约
+                    //only the legal SAR4C contract can call this method
                     if (getAccount(CALL_ACCOUNT).AsBigInteger() != callscript.AsBigInteger())
                         return false;
                     return increase(addr, value);
                 }
-                //销毁代币
                 if (operation == "destory")
                 {
                     if (args.Length != 2) return false;
                     byte[] addr = (byte[])args[0];
                     BigInteger value = (BigInteger)args[1];
 
-                    //判断调用者是否是授权合约
+                    //only the legal SAR4C contract can call this method
                     if (getAccount(CALL_ACCOUNT).AsBigInteger() != callscript.AsBigInteger())
                         return false;
-                    return destory(addr,value);
+                    return destory(addr, value);
                 }
+
                 #region 升级合约,耗费490,仅限管理员
                 if (operation == "upgrade")
                 {
-                    //不是管理员 不能操作
+                    //only committee account can call this method
                     if (!checkAdmin()) return false;
 
                     if (args.Length != 1 && args.Length != 9)
@@ -147,7 +140,7 @@ namespace SDUSD
 
                     byte[] script = Blockchain.GetContract(ExecutionEngine.ExecutingScriptHash).Script;
                     byte[] new_script = (byte[])args[0];
-                    //如果传入的脚本一样 不继续操作
+
                     if (script == new_script)
                         return false;
 
@@ -179,7 +172,7 @@ namespace SDUSD
             }
             return false;
         }
-       
+
         public static string name()
         {
             return "Standards USD";
@@ -194,12 +187,14 @@ namespace SDUSD
             return 8;
         }
 
-        //nep5 func
         public static BigInteger totalSupply()
         {
             return Storage.Get(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray())).AsBigInteger();
         }
 
+        /*     
+        * The committee account can set a new commitee account and set a legal SAR4C contract  
+        */
         public static bool setAccount(string key, byte[] address)
         {
             if (address.Length != 20)
@@ -214,12 +209,11 @@ namespace SDUSD
             byte[] currAdmin = Storage.Get(Storage.CurrentContext, getAccountKey(ADMIN_ACCOUNT.AsByteArray()));
             if (currAdmin.Length > 0)
             {
-                //当前地址和配置地址必须一致
                 if (!Runtime.CheckWitness(currAdmin)) return false;
             }
             else
             {
-                if (!Runtime.CheckWitness(admin)) return false;
+                if (!Runtime.CheckWitness(committee)) return false;
             }
             return true;
         }
@@ -228,8 +222,9 @@ namespace SDUSD
         {
             if (addr.Length != 20) return false;
             if (value <= 0) return false;
-           
-            if(transfer(addr, null, value)) { 
+
+            if (transfer(addr, null, value))
+            {
                 BigInteger current = totalSupply();
                 if (current - value < 0) return false;
                 Storage.Put(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray()), current - value);
@@ -243,7 +238,7 @@ namespace SDUSD
             if (addr.Length != 20) return false;
             if (value <= 0) return false;
 
-            if (transfer(null,addr,value))
+            if (transfer(null, addr, value))
             {
                 BigInteger current = totalSupply();
                 Storage.Put(Storage.CurrentContext, getTotalKey(TOTAL_SUPPLY.AsByteArray()), current + value);
@@ -252,7 +247,8 @@ namespace SDUSD
             return false;
         }
 
-        public static byte[] getAccount(string key) {
+        public static byte[] getAccount(string key)
+        {
 
             return Storage.Get(Storage.CurrentContext, getAccountKey(key.AsByteArray()));
         }
@@ -295,7 +291,7 @@ namespace SDUSD
             if (from == to) return true;
             var fromKey = getBalanceKey(from);
             var toKey = getBalanceKey(to);
-            //付款方
+
             if (from.Length > 0)
             {
                 BigInteger from_value = Storage.Get(Storage.CurrentContext, fromKey).AsBigInteger();
@@ -305,7 +301,7 @@ namespace SDUSD
                 else
                     Storage.Put(Storage.CurrentContext, fromKey, from_value - value);
             }
-            //收款方
+
             if (to.Length > 0)
             {
                 BigInteger to_value = Storage.Get(Storage.CurrentContext, toKey).AsBigInteger();
