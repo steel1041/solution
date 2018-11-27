@@ -25,9 +25,11 @@ namespace OracleContract
         //管理员账户  
         [DisplayName("oracleOperator")]
         public static event Action<byte[], byte[], byte[], BigInteger, int> Operated;
-         
-        //admin账户
+
+        //admin账户 
+        private const string SUPER_ADMIN_ACCOUNT = "super_admin_account";
         private const string ADMIN_ACCOUNT = "admin_account"; 
+        private static readonly byte[] superAdmin = Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa");
         private static readonly byte[] admin = Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa");
 
         private static byte[] GetTypeAParaKey(byte[] account) => new byte[] { 0x01 }.Concat(account);
@@ -35,11 +37,8 @@ namespace OracleContract
         private static byte[] GetTypeBKey(string key) => new byte[] { 0x03 }.Concat(key.AsByteArray());
 
         private static byte[] GetParaAddrKey(string paraKey, byte[] addr) => new byte[] { 0x10 }.Concat(paraKey.AsByteArray().Concat(addr));
-        //private static byte[] GetParaCountKey(string paraKey) => new byte[] { 0x11 }.Concat(paraKey.AsByteArray());
-        //private static byte[] GetAddrIndexKey(string paraKey, byte[] addr) => new byte[] { 0x13 }.Concat(paraKey.AsByteArray().Concat(addr));
 
         private static byte[] GetMedianKey(string key) => new byte[] { 0x20 }.Concat(key.AsByteArray());
-        private static byte[] GetAverageKey(string key) => new byte[] { 0x21 }.Concat(key.AsByteArray());
          
         private static byte[] GetConfigKey(byte[] key) => new byte[] { 0x30 }.Concat(key);
 
@@ -49,7 +48,7 @@ namespace OracleContract
         {
             var callscript = ExecutionEngine.CallingScriptHash;
 
-            var magicstr = "2018-10-24 14:10";
+            var magicstr = "2018-11-24 14:10";
          
             /*设置全局参数
             * liquidate_rate_b 150
@@ -85,7 +84,7 @@ namespace OracleContract
                 string key = (string)args[0];
                 byte[] address = (byte[])args[1];
 
-                if (!checkAdmin()) return false;
+                if (!Runtime.CheckWitness(superAdmin)) return false;
 
                 return setAccount(key, address);
             }
@@ -434,7 +433,13 @@ namespace OracleContract
             map[addr] = value;
 
             Storage.Put(Storage.CurrentContext, GetTypeBKey(key), map.Serialize());
-              
+             
+            Operated(addr, key.AsByteArray(), null, value, EVENT_TYPE_SET_TYPEB);
+
+            BigInteger medianValue = computeMedian(key);
+
+            Operated(addr, key.AsByteArray(), null, medianValue, EVENT_TYPE_SET_MEDIAN);
+            
             return true;
         }
 
