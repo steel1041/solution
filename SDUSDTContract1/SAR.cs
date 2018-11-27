@@ -186,7 +186,7 @@ namespace SAR4C
 
                     byte[] sarInfo = getSAR4C(addr);
                     if (sarInfo.Length == 0)
-                        return new SARInfo();
+                        return null;
                     return Helper.Deserialize(sarInfo) as SARInfo;
                 }
 
