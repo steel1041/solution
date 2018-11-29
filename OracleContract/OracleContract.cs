@@ -10,53 +10,45 @@ using System.Collections;
 
 namespace OracleContract
 {
-    public class Contract1 : SmartContract
-    { 
-
-        //事件类型
+    public class OracleContract : SmartContract
+    {
         private static readonly int EVENT_TYPE_SET_TYPEA = 1;
         private static readonly int EVENT_TYPE_SET_TYPEB = 2;
         private static readonly int EVENT_TYPE_SET_ACCOUNT = 3;
         private static readonly int EVENT_TYPE_SET_ADDR = 4;
-        private static readonly int EVENT_TYPE_SET_MEDIAN = 5; 
+        private static readonly int EVENT_TYPE_SET_MEDIAN = 5;
         private static readonly int EVENT_TYPE_REMOVE_ADDR = 6;
-          
-
-        //管理员账户  
+         
         [DisplayName("oracleOperator")]
         public static event Action<byte[], byte[], byte[], BigInteger, int> Operated;
 
-        //admin账户 
-        private const string SUPER_ADMIN_ACCOUNT = "super_admin_account";
-        private const string ADMIN_ACCOUNT = "admin_account"; 
-        private static readonly byte[] superAdmin = Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa");
+        //Static param
+        private const string COMMITTEE_ACCOUNT = "committee_account";
+        private const string ADMIN_ACCOUNT = "admin_account";
+
+        //Default multiple signature committee account
+        private static readonly byte[] committee = Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa");
+        //Default admin account,autorized by committee account
         private static readonly byte[] admin = Helper.ToScriptHash("AQdP56hHfo54JCWfpPw4MXviJDtQJMtXFa");
 
+        /*     
+        * Key wrapper
+        */
         private static byte[] GetTypeAParaKey(byte[] account) => new byte[] { 0x01 }.Concat(account);
         private static byte[] GetTypeAKey(string strKey) => new byte[] { 0x02 }.Concat(strKey.AsByteArray());
         private static byte[] GetTypeBKey(string key) => new byte[] { 0x03 }.Concat(key.AsByteArray());
-
         private static byte[] GetParaAddrKey(string paraKey, byte[] addr) => new byte[] { 0x10 }.Concat(paraKey.AsByteArray().Concat(addr));
-
         private static byte[] GetMedianKey(string key) => new byte[] { 0x20 }.Concat(key.AsByteArray());
-         
         private static byte[] GetConfigKey(byte[] key) => new byte[] { 0x30 }.Concat(key);
-
         private static byte[] GetAccountKey(string key) => new byte[] { 0x40 }.Concat(key.AsByteArray());
-         
+
         public static Object Main(string operation, params object[] args)
         {
             var callscript = ExecutionEngine.CallingScriptHash;
 
             var magicstr = "2018-11-24 14:10";
-         
-            /*设置全局参数
-            * liquidate_rate_b 150
-            * warning_rate_c 120
-            */
-            /*设置锚定物白名单
-             *anchor_type_gold   0:黑名单 非0:白名单
-             */
+
+            //only admin account can call this method
             if (operation == "setTypeA")
             {
                 if (args.Length != 2) return false;
@@ -77,14 +69,15 @@ namespace OracleContract
                 return getTypeA(key);
             }
 
+            //only committee account can call this method
             if (operation == "setAccount")
             {
                 if (args.Length != 2) return false;
-                //操作地址，验证当前管理员账户
+
                 string key = (string)args[0];
                 byte[] address = (byte[])args[1];
 
-                if (!Runtime.CheckWitness(superAdmin)) return false;
+                if (!checkCommittee()) return false;
 
                 return setAccount(key, address);
             }
@@ -97,7 +90,7 @@ namespace OracleContract
                 return Storage.Get(Storage.CurrentContext, GetAccountKey(key));
             }
 
-            //管理员添加某个参数合法外部喂价器地址
+            //only admin account can call this method
             if (operation == "addParaAddrWhit")
             {
                 if (args.Length != 3) return false;
@@ -106,12 +99,12 @@ namespace OracleContract
 
                 byte[] addr = (byte[])args[1];
 
-                BigInteger state = (BigInteger)args[2]; //设置授权状态state != 0 授权
+                BigInteger state = (BigInteger)args[2];
 
                 return addParaAddrWhit(para, addr, state);
             }
 
-            //管理员移除某个参数合法外部喂价器地址
+            //only admin account can call this method
             if (operation == "removeParaAddrWhit")
             {
                 if (args.Length != 2) return false;
@@ -123,47 +116,30 @@ namespace OracleContract
                 return removeParaAddrWhit(para, addr);
             }
 
-            //根据Para查询已授权喂价器地址和状态
             if (operation == "getApprovedAddrs")
             {
                 if (args.Length != 1) return false;
 
                 string para = (string)args[0];
 
-                byte[] prefix = GetParaAddrKey(para, new byte[]{ });
-                  
+                byte[] prefix = GetParaAddrKey(para, new byte[] { });
+
                 return getDataWithPrefix(prefix);
             }
 
-            //根据Para查询喂价器地址和价格
             if (operation == "getAddrWithParas")
             {
                 if (args.Length != 1) return false;
 
                 string para = (string)args[0];
-                  
+
                 byte[] prefix = new byte[] { };
 
-                return getDataWithPara(para); 
+                return getDataWithPara(para);
             }
 
-                /* 设置代币价格  
-                *  neo_price    50*100000000
-                *  gas_price    20*100000000  
-                *  sds_price    0.08*100000000 
-                */
-                 
-                //设置锚定物对应100000000美元汇率
-                /*  
-                 *  anchor_type_usd    1*100000000
-                 *  anchor_type_cny    6.8*100000000
-                 *  anchor_type_eur    0.875*100000000
-                 *  anchor_type_jpy    120*100000000
-                 *  anchor_type_gbp    0.7813 *100000000
-                 *  anchor_type_gold   0.000838 * 100000000
-                 */
-
-                if (operation == "setTypeB")
+            //only authorized account can call this method
+            if (operation == "setTypeB")
             {
                 if (args.Length != 3) return false;
 
@@ -175,15 +151,14 @@ namespace OracleContract
 
                 BigInteger state = (BigInteger)Storage.Get(Storage.CurrentContext, GetParaAddrKey(para, from)).AsBigInteger();
 
-                //允许合约或者授权账户调用
-                if (callscript.AsBigInteger() != from.AsBigInteger() && state == 0) return false;
+                if (state == 0) return false;
 
                 return setTypeB(para, from, value);
             }
 
             if (operation == "getTypeB")
             {
-                if (args.Length != 1) return false; 
+                if (args.Length != 1) return false;
                 string key = (string)args[0];
 
                 return getTypeB(key);
@@ -194,24 +169,24 @@ namespace OracleContract
                 return getStructConfig();
             }
 
+            //only admin account can call this method
             if (operation == "setStructConfig")
             {
                 if (!checkAdmin()) return false;
                 return setStructConfig();
             }
 
-            #region 升级合约,耗费490,仅限管理员
+            #region contract upgrade
             if (operation == "upgrade")
             {
-                //不是管理员 不能操作
-                if (!checkAdmin()) return false;
+                if (!checkCommittee()) return false;
 
                 if (args.Length != 1 && args.Length != 9)
                     return false;
 
                 byte[] script = Blockchain.GetContract(ExecutionEngine.ExecutingScriptHash).Script;
                 byte[] new_script = (byte[])args[0];
-                //如果传入的脚本一样 不继续操作
+
                 if (script == new_script)
                     return false;
 
@@ -247,15 +222,29 @@ namespace OracleContract
         private static bool checkAdmin()
         {
             byte[] currAdmin = Storage.Get(Storage.CurrentContext, GetAccountKey(ADMIN_ACCOUNT));
-             
+
             if (currAdmin.Length > 0)
             {
-                //当前地址和配置地址必须一致
                 if (!Runtime.CheckWitness(currAdmin)) return false;
             }
             else
             {
                 if (!Runtime.CheckWitness(admin)) return false;
+            }
+            return true;
+        }
+
+        private static bool checkCommittee()
+        {
+            byte[] currCommittee = Storage.Get(Storage.CurrentContext, GetAccountKey(COMMITTEE_ACCOUNT));
+
+            if (currCommittee.Length > 0)
+            {
+                if (!Runtime.CheckWitness(currCommittee)) return false;
+            }
+            else
+            {
+                if (!Runtime.CheckWitness(committee)) return false;
             }
             return true;
         }
@@ -283,7 +272,7 @@ namespace OracleContract
             if (Storage.Get(Storage.CurrentContext, byteKey).AsBigInteger() != 0 || state == 0) return false;
 
             Storage.Put(Storage.CurrentContext, byteKey, state);
-            
+
             Operated(addr, para.AsByteArray(), null, state, EVENT_TYPE_SET_ADDR);
 
             return true;
@@ -296,13 +285,13 @@ namespace OracleContract
             byte[] paraAddrByteKey = GetParaAddrKey(para, addr);
 
             Storage.Delete(Storage.CurrentContext, paraAddrByteKey);
-             
-            Map<byte[],BigInteger> map = getObjectWithKey(para);
-            
+
+            Map<byte[], BigInteger> map = getObjectWithKey(para);
+
             map.Remove(addr);
 
             Storage.Put(Storage.CurrentContext, GetTypeBKey(para), map.Serialize());
-            
+
             Operated(addr, para.AsByteArray(), null, 0, EVENT_TYPE_REMOVE_ADDR);
 
             return true;
@@ -323,15 +312,15 @@ namespace OracleContract
 
         public static Object getDataWithPara(string para)
         {
-            
+
             Map<byte[], BigInteger> map = getObjectWithKey(para);
-             
+
             var array = new Object[map.Values.Length];
 
             int index = 0;
 
-            foreach (byte[] addr in map.Keys) {
-
+            foreach (byte[] addr in map.Keys)
+            {
                 NodeObj obj = new NodeObj();
 
                 obj.value = map[addr];
@@ -340,15 +329,15 @@ namespace OracleContract
 
                 array[index] = obj;
 
-                index ++;
+                index++;
             }
-            
+
 
             return array;
         }
-         
+
         public static Object getDataWithPrefix(byte[] prefix)
-        { 
+        {
             int count = 0;
 
             Map<byte[], BigInteger> map = new Map<byte[], BigInteger>();
@@ -357,7 +346,7 @@ namespace OracleContract
 
             while (iterator.Next())
             {
-                if (iterator.Key.Range(0,prefix.Length) == prefix)
+                if (iterator.Key.Range(0, prefix.Length) == prefix)
                 {
                     count++;
 
@@ -369,16 +358,16 @@ namespace OracleContract
 
                     map[addr] = value;
                 }
-            }
-             
-            var objs = new Object[count];
+            } 
 
+            var objs = new Object[count];
+             
             if (count == 0) return objs;
 
             int index = 0;
 
             foreach (byte[] addr in map.Keys)
-            { 
+            {
                 NodeObj obj = new NodeObj();
                 obj.addr = addr;
                 obj.value = map[addr];
@@ -387,9 +376,9 @@ namespace OracleContract
 
                 index++;
             }
-             
+
             return objs;
-            
+
         }
 
         public static bool setTypeA(string key, BigInteger value)
@@ -403,10 +392,10 @@ namespace OracleContract
             Storage.Put(Storage.CurrentContext, byteKey, value);
 
             byte[] currAdmin = Storage.Get(Storage.CurrentContext, GetAccountKey(ADMIN_ACCOUNT));
-             
+
             if (currAdmin.Length == 0) currAdmin = admin;
 
-            Operated(currAdmin, key.AsByteArray(), null, value,EVENT_TYPE_SET_TYPEA);
+            Operated(currAdmin, key.AsByteArray(), null, value, EVENT_TYPE_SET_TYPEA);
             return true;
         }
 
@@ -418,7 +407,7 @@ namespace OracleContract
 
             return value;
         }
-        
+
 
         public static bool setTypeB(string key, byte[] addr, BigInteger value)
         {
@@ -427,19 +416,19 @@ namespace OracleContract
             if (value <= 0) return false;
 
             if (!Runtime.CheckWitness(addr)) return false;
-             
+
             Map<byte[], BigInteger> map = getObjectWithKey(key);
-             
+
             map[addr] = value;
 
             Storage.Put(Storage.CurrentContext, GetTypeBKey(key), map.Serialize());
-             
+
             Operated(addr, key.AsByteArray(), null, value, EVENT_TYPE_SET_TYPEB);
 
             BigInteger medianValue = computeMedian(key);
 
             Operated(addr, key.AsByteArray(), null, medianValue, EVENT_TYPE_SET_MEDIAN);
-            
+
             return true;
         }
 
@@ -449,7 +438,7 @@ namespace OracleContract
         }
 
         public static Config getStructConfig()
-        { 
+        {
             byte[] value = Storage.Get(Storage.CurrentContext, GetConfigKey("structConfig".AsByteArray()));
             if (value.Length > 0)
                 return Helper.Deserialize(value) as Config;
@@ -457,7 +446,7 @@ namespace OracleContract
         }
 
         public static bool setStructConfig()
-        {  
+        {
             Config config = new Config();
 
             config.liquidate_line_rate_b = getTypeA("liquidate_line_rate_b"); //50
@@ -474,7 +463,7 @@ namespace OracleContract
             config.fee_rate_c = getTypeA("fee_rate_c"); //148;
 
             Storage.Put(Storage.CurrentContext, GetConfigKey("structConfig".AsByteArray()), Helper.Serialize(config));
-            
+
             return true;
         }
 
@@ -482,12 +471,12 @@ namespace OracleContract
         {
             return Storage.Get(Storage.CurrentContext, GetMedianKey(key)).AsBigInteger();
         }
-        
-            public static BigInteger computeMedian(string key)
+
+        public static BigInteger computeMedian(string key)
         {
             Map<byte[], BigInteger> map = getObjectWithKey(key);
 
-            var prices = new BigInteger[map.Values.Length]; 
+            var prices = new BigInteger[map.Values.Length];
             {
                 int index = 0;
 
@@ -500,7 +489,7 @@ namespace OracleContract
                         index++;
                     }
                 }
-            } 
+            }
 
             BigInteger temp;
             for (int i = 0; i < prices.Length; i++)
@@ -520,7 +509,6 @@ namespace OracleContract
 
             if (prices.Length > 0)
             {
-
                 if (prices.Length % 2 != 0)
                 {
                     value = prices[(prices.Length + 1) / 2 - 1];
@@ -532,7 +520,7 @@ namespace OracleContract
                     value = (prices[index] + prices[index - 1]) / 2;
                 }
 
-                Storage.Put(Storage.CurrentContext, GetMedianKey(key), value); 
+                Storage.Put(Storage.CurrentContext, GetMedianKey(key), value);
             }
 
 
@@ -543,40 +531,30 @@ namespace OracleContract
 
         public class Config
         {
-            //B端抵押率   50
-        public BigInteger liquidate_line_rate_b;
+            public BigInteger liquidate_line_rate_b;
 
-        //C端抵押率  150
-        public BigInteger liquidate_line_rate_c;
+            public BigInteger liquidate_line_rate_c;
 
-        //C端清算折扣  90
-        public BigInteger liquidate_dis_rate_c;
+            public BigInteger liquidate_dis_rate_c;
 
-        //C端费用率  15秒的费率 乘以10的16次方  66,666,666
-        public BigInteger fee_rate_c;
+            public BigInteger fee_rate_c;
 
-        //C端最高可清算抵押率  160
-        public BigInteger liquidate_top_rate_c;
+            public BigInteger liquidate_top_rate_c;
 
-        //C端伺机者可清算抵押率 120
-        public BigInteger liquidate_line_rateT_c;
+            public BigInteger liquidate_line_rateT_c;
 
-        //C端发行费用 1000
-        public BigInteger issuing_fee_c;
+            public BigInteger issuing_fee_c;
 
-        //B端发行费用  1000000000
-        public BigInteger issuing_fee_b;
+            public BigInteger issuing_fee_b;
 
-        //C端最大发行量(债务上限)  1000000000000
-        public BigInteger debt_top_c;
+            public BigInteger debt_top_c;
 
         }
 
         public class NodeObj
         {
-            //授权的节点地址
-            public byte[] addr; 
-            //价格/状态
+            public byte[] addr;
+
             public BigInteger value;
         }
     }
