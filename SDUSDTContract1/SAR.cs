@@ -809,9 +809,10 @@ namespace SAR4C
 
             BigInteger canClearNeo = 0;
 
+            rateClear = getRateClear(currentRate, rateClear);
+
             if (currentRate > 10000 && currentRate < rate * 100)
             {
-
                 canClearNeo = mount * TEN_POWER / (nep5Price * rateClear);
 
                 if (canClearNeo <= 0)
@@ -856,6 +857,24 @@ namespace SAR4C
             //notify
             Operated(addr, sarInfo.txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_RESUCE, mount);
             return true;
+        }
+
+        /***
+         *  getRateClear-->liquidate_dis_rate_c
+         *  @param currentRate  11000
+         *  @param rateClear    90
+         **/
+        private static BigInteger getRateClear(BigInteger currentRate, BigInteger rateClear)
+        {
+            BigInteger ret = rateClear;
+            if (currentRate > 0 && rateClear > 0) {
+                BigInteger result = 100000000 / currentRate;
+                if (result > rateClear * 100) {
+                    ret = (result + 100) / 100; 
+                }
+            }
+            return ret;
+
         }
 
         private static Boolean rescueT(byte[] otherAddr, byte[] addr, BigInteger bondMount)

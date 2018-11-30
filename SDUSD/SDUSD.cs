@@ -49,7 +49,7 @@ namespace SDUSD
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-11-23 17:40:10";
+            var magicstr = "2018-11-30 17:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)
             {
