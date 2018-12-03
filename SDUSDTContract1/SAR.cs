@@ -103,7 +103,7 @@ namespace SAR4C
         /// </returns>
         public static Object Main(string operation, params object[] args)
         {
-            var magicstr = "2018-11-21 14:40:10";
+            var magicstr = "2018-12-03 14:40:10";
 
             if (Runtime.Trigger == TriggerType.Verification)
             {
@@ -464,7 +464,6 @@ namespace SAR4C
             {
                 byte[] from = ExecutionEngine.ExecutingScriptHash;
                 byte[] sdsAsset = Storage.Get(Storage.CurrentContext, getAccountKey(SDS_ACCOUNT.AsByteArray()));
-                var SDSDContract = (NEP5Contract)sdsAsset.ToDelegate();
                 object[] arg = new object[3];
                 arg[0] = from;
                 arg[1] = addr;
@@ -511,7 +510,6 @@ namespace SAR4C
             {
                 byte[] from = ExecutionEngine.ExecutingScriptHash;
                 byte[] sdsAsset = Storage.Get(Storage.CurrentContext, getAccountKey(SDS_ACCOUNT.AsByteArray()));
-                var SDSDContract = (NEP5Contract)sdsAsset.ToDelegate();
                 object[] arg = new object[3];
                 arg[0] = from;
                 arg[1] = addr;
@@ -580,11 +578,18 @@ namespace SAR4C
                 args[7] = sarInfo.bondDrawed;
                 args[8] = sarInfo.lastHeight;
                 args[9] = sarInfo.fee;
-                args[10] = sarInfo.sdsFee;
+                args[10] = 0;
 
                 if (!(bool)newContract("createSAR4C", args))
                     throw new InvalidOperationException("The operation is error.");
             }
+
+            sarInfo.locked = 0;
+            sarInfo.hasDrawed = 0;
+            sarInfo.bondDrawed = 0;
+            sarInfo.bondLocked = 0;
+            sarInfo.fee = 0;
+            Storage.Put(Storage.CurrentContext,key, Helper.Serialize(sarInfo));
             return true;
         }
 
@@ -661,10 +666,16 @@ namespace SAR4C
                 args[7] = sarInfo.bondDrawed;
                 args[8] = sarInfo.lastHeight;
                 args[9] = sarInfo.fee;
-                args[10] = sarInfo.sdsFee;
+                args[10] = 0;
                 if (!(bool)newContract("createSAR4C", args))
                     throw new InvalidOperationException("The operation is error.");
             }
+            sarInfo.locked = 0;
+            sarInfo.hasDrawed = 0;
+            sarInfo.bondDrawed = 0;
+            sarInfo.bondLocked = 0;
+            sarInfo.fee = 0;
+            Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sarInfo));
             return true;
         }
 
