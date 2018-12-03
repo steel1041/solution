@@ -462,7 +462,6 @@ namespace SAR4C
             BigInteger sdsFee = sarInfo.sdsFee;
             if (sdsFee > 0)
             {
-                //byte[] from = Storage.Get(Storage.CurrentContext, getAccountKey(STORAGE_ACCOUNT.AsByteArray()));
                 byte[] from = ExecutionEngine.ExecutingScriptHash;
                 byte[] sdsAsset = Storage.Get(Storage.CurrentContext, getAccountKey(SDS_ACCOUNT.AsByteArray()));
                 var SDSDContract = (NEP5Contract)sdsAsset.ToDelegate();
@@ -551,8 +550,6 @@ namespace SAR4C
             BigInteger sdsFee = sarInfo.sdsFee;
             string assetType = sarInfo.assetType;
 
-            if (sdsFee > 0) throw new InvalidOperationException("The sdsFee must not be 0.");
-
             byte[] nep5AssetID = Storage.Get(Storage.CurrentContext, getAccountKey(assetType.AsByteArray()));
             byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
             byte[] oracleAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(ORACLE_ACCOUNT.AsByteArray()));
@@ -588,7 +585,6 @@ namespace SAR4C
                 if (!(bool)newContract("createSAR4C", args))
                     throw new InvalidOperationException("The operation is error.");
             }
-            Storage.Delete(Storage.CurrentContext, key);
             return true;
         }
 
@@ -612,8 +608,6 @@ namespace SAR4C
             BigInteger hasDrawed = sarInfo.hasDrawed;
             BigInteger sdsFee = sarInfo.sdsFee;
             string assetType = sarInfo.assetType;
-
-            if (sdsFee > 0) throw new InvalidOperationException("The sdsFee must not be 0.");
 
             byte[] nep5AssetID = Storage.Get(Storage.CurrentContext, getAccountKey(assetType.AsByteArray()));
             byte[] sdusdAssetID = Storage.Get(Storage.CurrentContext, getAccountKey(SDUSD_ACCOUNT.AsByteArray()));
@@ -671,7 +665,6 @@ namespace SAR4C
                 if (!(bool)newContract("createSAR4C", args))
                     throw new InvalidOperationException("The operation is error.");
             }
-            Storage.Delete(Storage.CurrentContext, key);
             return true;
         }
 
@@ -695,6 +688,10 @@ namespace SAR4C
                 return false;
 
             Storage.Put(Storage.CurrentContext, key, Helper.Serialize(sar));
+
+            var txid = ((Transaction)ExecutionEngine.ScriptContainer).Hash;
+            //notify
+            Operated(addr, txid, txid, (int)ConfigTranType.TRANSACTION_TYPE_OPEN, 0);
             return true;
         }
 
